@@ -24,16 +24,21 @@ export function ToastContainer() {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`animate-in slide-in-from-right rounded-lg p-4 shadow-md ${
-            toast.variant === "destructive" ? "bg-red-50 text-red-600" : "bg-white"
+          className={`animate-in slide-in-from-right rounded-lg p-4 shadow-md bg-arcane-navy border ${
+            toast.variant === "destructive"
+              ? "border-red-500/50 text-red-400"
+              : "border-arcane-blue/50 text-arcane-blue"
           }`}
         >
           <div className="flex items-start justify-between">
             <div>
               <h3 className="font-medium">{toast.title}</h3>
-              <p className="text-sm">{toast.description}</p>
+              <p className="text-sm text-arcane-gray">{toast.description}</p>
             </div>
-            <button onClick={() => dismissToast(toast.id)} className="ml-4 rounded-full p-1 hover:bg-gray-100">
+            <button
+              onClick={() => dismissToast(toast.id)}
+              className="ml-4 rounded-full p-1 hover:bg-arcane-navy/50 text-arcane-gray hover:text-arcane-gray-light"
+            >
               <X className="h-4 w-4" />
             </button>
           </div>

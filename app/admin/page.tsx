@@ -39,28 +39,34 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-pink-50 to-blue-50 p-4">
-      <Card className="w-full max-w-md border-2 border-pink-200 shadow-md">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-arcane-navy p-4">
+      <Card className="w-full max-w-md border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-pink-600">Admin Login</CardTitle>
-          <CardDescription>Enter the admin password to manage the game</CardDescription>
+          <CardTitle className="text-2xl font-bold text-arcane-blue">Admin Login</CardTitle>
+          <CardDescription className="text-arcane-gray">Enter the admin password to manage the game</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password" className="text-arcane-gray-light">
+                Password
+              </Label>
               <Input
                 id="password"
                 type="password"
                 placeholder="Enter admin password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="border-pink-200 focus:border-pink-400 focus:ring-pink-400"
+                className="border-arcane-blue/30 bg-arcane-navy/50 text-arcane-gray-light focus:border-arcane-blue focus:ring-arcane-blue"
                 required
               />
               {error && <p className="text-sm text-red-500">{error}</p>}
             </div>
-            <Button type="submit" className="w-full bg-pink-600 hover:bg-pink-700" disabled={isSubmitting}>
+            <Button
+              type="submit"
+              className="w-full bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold"
+              disabled={isSubmitting}
+            >
               {isSubmitting ? "Logging in..." : "Login"}
             </Button>
           </form>

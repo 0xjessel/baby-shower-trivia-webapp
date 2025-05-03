@@ -88,7 +88,9 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-4">
         <div>
-          <Label htmlFor="question-type">Question Type</Label>
+          <Label htmlFor="question-type" className="text-arcane-gray-light">
+            Question Type
+          </Label>
           <RadioGroup
             value={questionType}
             onValueChange={(value) => setQuestionType(value as "baby-picture" | "text")}
@@ -96,33 +98,60 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
             name="question-type" // Add name attribute
           >
             <div className="flex items-center space-x-2">
-              <RadioGroupItem value="baby-picture" id="baby-picture" />
-              <Label htmlFor="baby-picture">Baby Picture</Label>
+              <RadioGroupItem value="baby-picture" id="baby-picture" className="text-arcane-blue" />
+              <Label htmlFor="baby-picture" className="text-arcane-gray-light">
+                Baby Picture
+              </Label>
             </div>
             <div className="flex items-center space-x-2">
-              <RadioGroupItem value="text" id="text-question" />
-              <Label htmlFor="text-question">Text Question</Label>
+              <RadioGroupItem value="text" id="text-question" className="text-arcane-blue" />
+              <Label htmlFor="text-question" className="text-arcane-gray-light">
+                Text Question
+              </Label>
             </div>
           </RadioGroup>
         </div>
 
         <div>
-          <Label htmlFor="question">Question</Label>
-          <Textarea id="question" name="question" placeholder="Who is this baby?" className="mt-1" required />
+          <Label htmlFor="question" className="text-arcane-gray-light">
+            Question
+          </Label>
+          <Textarea
+            id="question"
+            name="question"
+            placeholder="Who is this baby?"
+            className="mt-1 border-arcane-blue/30 bg-arcane-navy/50 text-arcane-gray-light focus:border-arcane-blue focus:ring-arcane-blue"
+            required
+          />
         </div>
 
         {questionType === "baby-picture" && (
           <div>
-            <Label htmlFor="image">Baby Picture</Label>
-            <Input id="image" name="image" type="file" accept="image/*" className="mt-1" required />
-            <p className="mt-1 text-xs text-gray-500">Maximum file size: 5MB. Supported formats: JPG, PNG, GIF.</p>
+            <Label htmlFor="image" className="text-arcane-gray-light">
+              Baby Picture
+            </Label>
+            <Input
+              id="image"
+              name="image"
+              type="file"
+              accept="image/*"
+              className="mt-1 border-arcane-blue/30 bg-arcane-navy/50 text-arcane-gray-light focus:border-arcane-blue focus:ring-arcane-blue"
+              required
+            />
+            <p className="mt-1 text-xs text-arcane-gray">Maximum file size: 5MB. Supported formats: JPG, PNG, GIF.</p>
           </div>
         )}
 
         <div>
           <div className="flex items-center justify-between">
-            <Label>Answer Options</Label>
-            <Button type="button" variant="outline" size="sm" onClick={addOption} className="h-8 text-xs">
+            <Label className="text-arcane-gray-light">Answer Options</Label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addOption}
+              className="h-8 text-xs border-arcane-gold text-arcane-gold hover:bg-arcane-gold/10"
+            >
               <PlusCircle className="mr-1 h-3 w-3" />
               Add Option
             </Button>
@@ -136,11 +165,12 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
             >
               {options.map((option, index) => (
                 <div key={index} className="flex items-center gap-2">
-                  <RadioGroupItem value={index.toString()} id={`correct-${index}`} className="text-pink-600" />
+                  <RadioGroupItem value={index.toString()} id={`correct-${index}`} className="text-arcane-blue" />
                   <Input
                     value={option}
                     onChange={(e) => handleOptionChange(index, e.target.value)}
                     placeholder={`Option ${index + 1}`}
+                    className="border-arcane-blue/30 bg-arcane-navy/50 text-arcane-gray-light focus:border-arcane-blue focus:ring-arcane-blue"
                     required
                   />
                   <Button
@@ -149,7 +179,7 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
                     size="icon"
                     onClick={() => removeOption(index)}
                     disabled={options.length <= 2}
-                    className="h-8 w-8 text-gray-500"
+                    className="h-8 w-8 text-arcane-gray"
                   >
                     <X className="h-4 w-4" />
                   </Button>
@@ -161,18 +191,22 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
       </div>
 
       {error && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="bg-red-900/20 border-red-500/50 text-red-400">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
       {success && (
-        <Alert variant="default" className="bg-green-50 text-green-600 border-green-200">
+        <Alert variant="default" className="bg-green-900/20 text-green-400 border-green-500/50">
           <AlertDescription>Question added successfully!</AlertDescription>
         </Alert>
       )}
 
-      <Button type="submit" className="w-full bg-pink-600 hover:bg-pink-700" disabled={isSubmitting}>
+      <Button
+        type="submit"
+        className="w-full bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold"
+        disabled={isSubmitting}
+      >
         {isSubmitting ? "Adding Question..." : "Add Question"}
       </Button>
     </form>

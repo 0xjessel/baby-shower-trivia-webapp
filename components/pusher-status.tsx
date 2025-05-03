@@ -26,19 +26,19 @@ export function PusherStatus() {
   }, [gameChannel, isLoading, isConnected])
 
   return (
-    <div className="fixed bottom-2 right-2 text-xs px-2 py-1 rounded-full flex items-center gap-1">
+    <div className="fixed bottom-2 right-2 text-xs px-2 py-1 rounded-full flex items-center gap-1 bg-arcane-navy/80 border border-arcane-blue/20">
       <div
         className={`w-2 h-2 rounded-full ${
           status === "connected"
             ? "bg-green-500"
             : status === "preview"
-              ? "bg-blue-500"
+              ? "bg-arcane-blue"
               : status === "connecting"
-                ? "bg-yellow-500"
+                ? "bg-arcane-gold"
                 : "bg-red-500"
         }`}
       />
-      <span className="text-gray-600">
+      <span className="text-arcane-gray">
         {status === "connected"
           ? "Realtime connected"
           : status === "preview"

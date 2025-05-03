@@ -10,14 +10,14 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className="bg-arcane-navy text-arcane-gray-light">
       <head>
-        <title>Baby Shower Trivia Game</title>
+        <title>Baby Jayce's League Challenge</title>
         <meta name="description" content="A fun trivia game for baby showers" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
       </head>
-      <body>
+      <body className="bg-arcane-navy">
         <PusherProvider>
           {children}
           <PusherStatus />

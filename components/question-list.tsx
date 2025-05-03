@@ -61,17 +61,22 @@ export default function QuestionList() {
   if (isLoading) {
     return (
       <div className="text-center py-8">
-        <div className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-pink-200 border-t-pink-600 mx-auto"></div>
-        <p className="text-gray-600">Loading questions...</p>
+        <div className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-arcane-blue/30 border-t-arcane-blue mx-auto"></div>
+        <p className="text-arcane-gray">Loading questions...</p>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="rounded-md bg-red-50 p-4 text-center text-red-600">
+      <div className="rounded-md bg-red-900/20 p-4 text-center text-red-400 border border-red-500/50">
         {error}
-        <Button onClick={fetchQuestions} variant="outline" size="sm" className="mt-2">
+        <Button
+          onClick={fetchQuestions}
+          variant="outline"
+          size="sm"
+          className="mt-2 border-arcane-blue text-arcane-blue hover:bg-arcane-blue/10"
+        >
           Try Again
         </Button>
       </div>
@@ -81,7 +86,7 @@ export default function QuestionList() {
   if (questions.length === 0) {
     return (
       <div className="text-center py-8">
-        <p className="text-gray-600">No questions added yet.</p>
+        <p className="text-arcane-gray">No questions added yet.</p>
       </div>
     )
   }
@@ -89,20 +94,20 @@ export default function QuestionList() {
   return (
     <div className="space-y-4">
       {questions.map((question, index) => (
-        <Card key={question.id} className="border border-gray-200">
+        <Card key={question.id} className="border border-arcane-blue/30 bg-arcane-navy/80">
           <CardContent className="p-4">
             <div className="flex items-start justify-between">
               <div>
-                <span className="inline-block rounded-full bg-pink-100 px-2 py-1 text-xs font-medium text-pink-800">
+                <span className="inline-block rounded-full bg-arcane-blue/20 px-2 py-1 text-xs font-medium text-arcane-blue">
                   {question.type === "baby-picture" ? "Baby Picture" : "Text Question"}
                 </span>
-                <h3 className="mt-2 font-medium">{question.question}</h3>
+                <h3 className="mt-2 font-medium text-arcane-gray-light">{question.question}</h3>
               </div>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => handleDelete(question.id)}
-                className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                className="text-red-400 hover:bg-red-900/20 hover:text-red-300"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -115,10 +120,13 @@ export default function QuestionList() {
             )}
 
             <div className="mt-3">
-              <p className="text-xs font-medium text-gray-500">Options:</p>
+              <p className="text-xs font-medium text-arcane-gray">Options:</p>
               <ul className="mt-1 space-y-1 text-sm">
                 {question.options.map((option, i) => (
-                  <li key={i} className={option === question.correctAnswer ? "font-medium text-green-600" : ""}>
+                  <li
+                    key={i}
+                    className={option === question.correctAnswer ? "font-medium text-arcane-gold" : "text-arcane-gray"}
+                  >
                     {option} {option === question.correctAnswer && "(Correct)"}
                   </li>
                 ))}

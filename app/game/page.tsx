@@ -125,10 +125,10 @@ export default function GamePage() {
 
   if (isPusherLoading || isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-pink-50 to-blue-50">
+      <div className="flex min-h-screen items-center justify-center bg-arcane-navy">
         <div className="text-center">
-          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-pink-200 border-t-pink-600 mx-auto"></div>
-          <p className="text-lg text-gray-600">Loading question...</p>
+          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-arcane-blue/30 border-t-arcane-blue mx-auto"></div>
+          <p className="text-lg text-arcane-gray">Loading question...</p>
         </div>
       </div>
     )
@@ -136,11 +136,11 @@ export default function GamePage() {
 
   if (isWaiting || !currentQuestion) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-pink-50 to-blue-50 p-4">
-        <Card className="w-full max-w-md border-2 border-pink-200 text-center shadow-md">
+      <div className="flex min-h-screen items-center justify-center bg-arcane-navy p-4">
+        <Card className="w-full max-w-md border-2 border-arcane-blue/50 bg-arcane-navy/80 text-center shadow-md">
           <CardContent className="pt-6">
-            <h2 className="text-xl font-semibold text-gray-800">Waiting for the game to start</h2>
-            <p className="mt-2 text-gray-600">The host will start the game soon!</p>
+            <h2 className="text-xl font-semibold text-arcane-gray-light">Waiting for the game to start</h2>
+            <p className="mt-2 text-arcane-gray">The host will start the game soon!</p>
           </CardContent>
         </Card>
       </div>
@@ -148,10 +148,10 @@ export default function GamePage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-pink-50 to-blue-50 p-4">
-      <Card className="w-full max-w-md border-2 border-pink-200 shadow-md">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-arcane-navy p-4">
+      <Card className="w-full max-w-md border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
         <CardContent className="p-6">
-          <h2 className="mb-4 text-xl font-semibold text-pink-600">{currentQuestion.question}</h2>
+          <h2 className="mb-4 text-xl font-semibold text-arcane-blue">{currentQuestion.question}</h2>
 
           {currentQuestion.type === "baby-picture" && currentQuestion.imageUrl && (
             <div className="mb-6 overflow-hidden rounded-lg">
@@ -174,11 +174,13 @@ export default function GamePage() {
                 <div
                   key={index}
                   className={`flex items-center rounded-lg border p-3 transition-colors ${
-                    selectedAnswer === option ? "border-pink-400 bg-pink-50" : "border-gray-200"
+                    selectedAnswer === option
+                      ? "border-arcane-blue bg-arcane-blue/10"
+                      : "border-arcane-blue/20 bg-arcane-navy/50"
                   }`}
                 >
-                  <RadioGroupItem value={option} id={`option-${index}`} className="text-pink-600" />
-                  <Label htmlFor={`option-${index}`} className="ml-2 cursor-pointer w-full">
+                  <RadioGroupItem value={option} id={`option-${index}`} className="text-arcane-blue" />
+                  <Label htmlFor={`option-${index}`} className="ml-2 cursor-pointer w-full text-arcane-gray-light">
                     {option}
                   </Label>
                 </div>
@@ -189,7 +191,7 @@ export default function GamePage() {
           <Button
             onClick={handleSubmit}
             disabled={!selectedAnswer || hasSubmitted}
-            className="w-full bg-pink-600 hover:bg-pink-700"
+            className="w-full bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold"
           >
             {hasSubmitted ? "Answer Submitted!" : "Submit Answer"}
           </Button>

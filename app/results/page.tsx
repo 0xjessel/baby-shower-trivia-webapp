@@ -87,10 +87,10 @@ export default function ResultsPage() {
 
   if (isPusherLoading || isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-pink-50 to-blue-50">
+      <div className="flex min-h-screen items-center justify-center bg-arcane-navy">
         <div className="text-center">
-          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-pink-200 border-t-pink-600 mx-auto"></div>
-          <p className="text-lg text-gray-600">Loading results...</p>
+          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-arcane-blue/30 border-t-arcane-blue mx-auto"></div>
+          <p className="text-lg text-arcane-gray">Loading results...</p>
         </div>
       </div>
     )
@@ -98,11 +98,11 @@ export default function ResultsPage() {
 
   if (isWaiting) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-pink-50 to-blue-50 p-4">
-        <Card className="w-full max-w-md border-2 border-pink-200 text-center shadow-md">
+      <div className="flex min-h-screen items-center justify-center bg-arcane-navy p-4">
+        <Card className="w-full max-w-md border-2 border-arcane-blue/50 bg-arcane-navy/80 text-center shadow-md">
           <CardContent className="pt-6">
-            <h2 className="text-xl font-semibold text-gray-800">Waiting for results</h2>
-            <p className="mt-2 text-gray-600">The host will reveal the results soon!</p>
+            <h2 className="text-xl font-semibold text-arcane-gray-light">Waiting for results</h2>
+            <p className="mt-2 text-arcane-gray">The host will reveal the results soon!</p>
           </CardContent>
         </Card>
       </div>
@@ -110,11 +110,11 @@ export default function ResultsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-pink-50 to-blue-50 p-4">
+    <div className="min-h-screen bg-arcane-navy p-4">
       <div className="mx-auto max-w-md">
         <div className="mb-6 text-center">
-          <h1 className="text-3xl font-bold text-pink-600">Your Results</h1>
-          <p className="mt-2 text-lg text-gray-600">
+          <h1 className="text-3xl font-bold text-arcane-blue">Your Results</h1>
+          <p className="mt-2 text-lg text-arcane-gray">
             You got {score.correct} out of {score.total} correct!
           </p>
         </div>
@@ -123,10 +123,12 @@ export default function ResultsPage() {
           {results.map((result, index) => (
             <Card
               key={index}
-              className={`border-2 shadow-md ${result.isCorrect ? "border-green-200" : "border-red-200"}`}
+              className={`border-2 shadow-md bg-arcane-navy/80 ${
+                result.isCorrect ? "border-green-500/50" : "border-red-500/50"
+              }`}
             >
               <CardContent className="p-4">
-                <h3 className="font-semibold text-gray-800">{result.question}</h3>
+                <h3 className="font-semibold text-arcane-gray-light">{result.question}</h3>
 
                 {result.imageUrl && (
                   <div className="my-3 overflow-hidden rounded-lg">
@@ -140,12 +142,12 @@ export default function ResultsPage() {
 
                 <div className="mt-2 space-y-1 text-sm">
                   <p>
-                    <span className="font-medium text-gray-600">Correct answer:</span>{" "}
-                    <span className="text-green-600">{result.correctAnswer}</span>
+                    <span className="font-medium text-arcane-gray">Correct answer:</span>{" "}
+                    <span className="text-green-500">{result.correctAnswer}</span>
                   </p>
                   <p>
-                    <span className="font-medium text-gray-600">Your answer:</span>{" "}
-                    <span className={result.isCorrect ? "text-green-600" : "text-red-600"}>{result.yourAnswer}</span>
+                    <span className="font-medium text-arcane-gray">Your answer:</span>{" "}
+                    <span className={result.isCorrect ? "text-green-500" : "text-red-500"}>{result.yourAnswer}</span>
                   </p>
                 </div>
               </CardContent>
@@ -154,7 +156,10 @@ export default function ResultsPage() {
         </div>
 
         <div className="mt-6 text-center">
-          <Button onClick={() => router.push("/")} className="bg-pink-600 hover:bg-pink-700">
+          <Button
+            onClick={() => router.push("/")}
+            className="bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold"
+          >
             Back to Home
           </Button>
         </div>

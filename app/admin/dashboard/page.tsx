@@ -129,10 +129,10 @@ export default function AdminDashboardPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-pink-50 to-blue-50">
+      <div className="flex min-h-screen items-center justify-center bg-arcane-navy">
         <div className="text-center">
-          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-pink-200 border-t-pink-600 mx-auto"></div>
-          <p className="text-lg text-gray-600">Loading admin dashboard...</p>
+          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-arcane-blue/30 border-t-arcane-blue mx-auto"></div>
+          <p className="text-lg text-arcane-gray">Loading admin dashboard...</p>
         </div>
       </div>
     )
@@ -143,22 +143,22 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-pink-50 to-blue-50 p-4">
+    <div className="min-h-screen bg-arcane-navy p-4">
       <div className="mx-auto max-w-4xl">
         <div className="mb-6 text-center">
-          <h1 className="text-3xl font-bold text-pink-600">Admin Dashboard</h1>
-          <p className="mt-2 text-gray-600">Manage your baby shower trivia game</p>
+          <h1 className="text-3xl font-bold text-arcane-blue">Admin Dashboard</h1>
+          <p className="mt-2 text-arcane-gray">Manage Baby Jayce's League Challenge</p>
         </div>
 
         <div className="grid gap-6">
-          <Card className="border-2 border-pink-200 shadow-md">
+          <Card className="border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
             <CardHeader>
-              <CardTitle className="text-xl text-pink-600">Game Controls</CardTitle>
+              <CardTitle className="text-xl text-arcane-blue">Game Controls</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-3">
               <Button
                 onClick={handleNextQuestion}
-                className="bg-pink-600 hover:bg-pink-700"
+                className="bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold"
                 disabled={isActionInProgress}
               >
                 {isActionInProgress ? "Processing..." : "Next Question"}
@@ -166,7 +166,7 @@ export default function AdminDashboardPage() {
               <Button
                 onClick={handleShowResults}
                 variant="outline"
-                className="border-pink-600 text-pink-600 hover:bg-pink-50"
+                className="border-arcane-gold text-arcane-gold hover:bg-arcane-gold/10 font-medium"
                 disabled={isActionInProgress}
               >
                 {isActionInProgress ? "Processing..." : "Show Results"}
@@ -178,14 +178,29 @@ export default function AdminDashboardPage() {
           </Card>
 
           <Tabs defaultValue="questions" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="questions">Questions</TabsTrigger>
-              <TabsTrigger value="add">Add Question</TabsTrigger>
-              <TabsTrigger value="stats">Game Stats</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-3 bg-arcane-navy border border-arcane-blue/30">
+              <TabsTrigger
+                value="questions"
+                className="data-[state=active]:bg-arcane-blue data-[state=active]:text-arcane-navy text-arcane-gray-light"
+              >
+                Questions
+              </TabsTrigger>
+              <TabsTrigger
+                value="add"
+                className="data-[state=active]:bg-arcane-blue data-[state=active]:text-arcane-navy text-arcane-gray-light"
+              >
+                Add Question
+              </TabsTrigger>
+              <TabsTrigger
+                value="stats"
+                className="data-[state=active]:bg-arcane-blue data-[state=active]:text-arcane-navy text-arcane-gray-light"
+              >
+                Game Stats
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="questions">
-              <Card className="border-2 border-pink-200 shadow-md">
+              <Card className="border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
                 <CardContent className="pt-6">
                   <QuestionList />
                 </CardContent>
@@ -193,7 +208,7 @@ export default function AdminDashboardPage() {
             </TabsContent>
 
             <TabsContent value="add">
-              <Card className="border-2 border-pink-200 shadow-md">
+              <Card className="border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
                 <CardContent className="pt-6">
                   <QuestionForm onSubmit={uploadQuestion} />
                 </CardContent>
@@ -201,7 +216,7 @@ export default function AdminDashboardPage() {
             </TabsContent>
 
             <TabsContent value="stats">
-              <Card className="border-2 border-pink-200 shadow-md">
+              <Card className="border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
                 <CardContent className="pt-6">
                   <GameStats />
                 </CardContent>
