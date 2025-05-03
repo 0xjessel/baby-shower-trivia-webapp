@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { submitAnswer, addCustomAnswer, updateVoteCount } from "@/app/actions"
+import { submitAnswer, addCustomAnswer } from "@/app/actions"
 import { usePusher } from "@/hooks/use-pusher"
 import { EVENTS } from "@/lib/pusher-client"
 import CountdownTimer from "@/components/countdown-timer"
@@ -38,7 +38,7 @@ export default function GamePage() {
   const [submittedAnswer, setSubmittedAnswer] = useState<string>("")
   const [hasSubmitted, setHasSubmitted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [isWaiting, setIsWaiting] = useState(true)
+  const [isWaiting, setIsWaiting] = useState(false)
   const [timerActive, setTimerActive] = useState(false)
   const [timerReset, setTimerReset] = useState(0)
   const [timeIsUp, setTimeIsUp] = useState(false)
@@ -50,8 +50,6 @@ export default function GamePage() {
   const playerName = useRef<string>("")
   const router = useRouter()
   const { gameChannel, isLoading: isPusherLoading } = usePusher()
-  const previousAnswerRef = useRef<string | null>(null)
-  const isUpdatingVoteRef = useRef(false)
 
   // Memoize the fetchCurrentQuestion function to avoid recreating it on every render
   const fetchCurrentQuestion = useCallback(async () => {
@@ -85,12 +83,10 @@ export default function GamePage() {
           if (data.answered && data.selectedAnswer) {
             setSelectedAnswer(data.selectedAnswer)
             setSubmittedAnswer(data.selectedAnswer)
-            previousAnswerRef.current = data.selectedAnswer
             setHasSubmitted(true)
           } else {
             setSelectedAnswer("")
             setSubmittedAnswer("")
-            previousAnswerRef.current = null
             setHasSubmitted(false)
           }
 
@@ -166,7 +162,6 @@ export default function GamePage() {
       setCurrentQuestion(data.question)
       setSelectedAnswer("")
       setSubmittedAnswer("")
-      previousAnswerRef.current = null
       setHasSubmitted(false)
       setIsLoading(false)
       setIsWaiting(false)
@@ -186,7 +181,6 @@ export default function GamePage() {
 
     // Listen for vote updates
     gameChannel.bind(EVENTS.VOTE_UPDATE, (data: { voteCounts: VoteCounts; totalVotes: number }) => {
-      console.log("Received vote update:", data)
       setVoteCounts(data.voteCounts)
       setTotalVotes(data.totalVotes)
     })
@@ -204,7 +198,6 @@ export default function GamePage() {
 
     // Listen for results announcement
     gameChannel.bind(EVENTS.SHOW_RESULTS, () => {
-      console.log("Received SHOW_RESULTS event, redirecting to results page")
       router.push("/results")
     })
 
@@ -213,7 +206,6 @@ export default function GamePage() {
       setCurrentQuestion(null)
       setSelectedAnswer("")
       setSubmittedAnswer("")
-      previousAnswerRef.current = null
       setHasSubmitted(false)
       setIsWaiting(true)
       setTimerActive(false)
@@ -233,84 +225,32 @@ export default function GamePage() {
     }
   }, [gameChannel, router])
 
-  const handleAnswerChange = async (value: string) => {
-    if (!currentQuestion) return
-
-    const previousAnswer = previousAnswerRef.current
-
-    // Optimistically update the UI
-    setSelectedAnswer(value)
-
-    // Update vote counts optimistically
-    setVoteCounts((prev) => {
-      const newCounts = { ...prev }
-
-      // If changing from a previously selected answer, decrement that count
-      if (previousAnswer && previousAnswer !== value) {
-        newCounts[previousAnswer] = Math.max(0, (prev[previousAnswer] || 0) - 1)
-      }
-
-      // Increment the count for the newly selected answer
-      newCounts[value] = (prev[value] || 0) + 1
-
-      return newCounts
-    })
-
-    // Update total votes if this is a new selection
-    if (!previousAnswer) {
-      setTotalVotes((prev) => prev + 1)
-    }
-
-    // Store the new answer as the previous answer for next time
-    previousAnswerRef.current = value
-
-    // If already submitted and user selects a different answer, allow resubmission
-    if (hasSubmitted && !timeIsUp && value !== submittedAnswer) {
-      setHasSubmitted(false)
-    }
-
-    // Prevent multiple simultaneous vote updates
-    if (isUpdatingVoteRef.current) return
-
-    isUpdatingVoteRef.current = true
-
-    try {
-      // Send the update to the server
-      await updateVoteCount(currentQuestion.id, value, previousAnswer)
-    } catch (error) {
-      console.error("Failed to update vote count:", error)
-      // If the server update fails, we could revert the optimistic update here
-      // but for simplicity, we'll leave it as is since the next poll will sync
-    } finally {
-      isUpdatingVoteRef.current = false
-    }
-  }
-
   const handleSubmit = async () => {
     if (!selectedAnswer || !currentQuestion) return
 
     try {
-      // Optimistically update UI
+      await submitAnswer(currentQuestion.id, selectedAnswer)
       setSubmittedAnswer(selectedAnswer)
       setHasSubmitted(true)
-
-      // Send to server
-      await submitAnswer(currentQuestion.id, selectedAnswer)
-
       toast({
         title: "Answer submitted!",
       })
     } catch (error) {
       console.error("Failed to submit answer:", error)
-
-      // Revert optimistic update on error
-      setHasSubmitted(false)
-
       toast({
         title: "Error",
         description: "Failed to submit your answer. Please try again.",
         variant: "destructive",
       })
+    }
+  }
+
+  const handleAnswerChange = (value: string) => {
+    setSelectedAnswer(value)
+
+    // If already submitted and user selects a different answer, allow resubmission
+    if (hasSubmitted && !timeIsUp && value !== submittedAnswer) {
+      setHasSubmitted(false)
     }
   }
 
@@ -336,34 +276,12 @@ export default function GamePage() {
     try {
       const result = await addCustomAnswer(currentQuestion.id, newCustomAnswer.trim())
 
-      if (result.success && result.customAnswer) {
+      if (result.success) {
         setNewCustomAnswer("")
         toast({
           title: "Custom answer added!",
-          description: "Your answer has been submitted.",
+          description: "Your answer is now available for everyone to vote on.",
         })
-
-        // Add the custom answer to the local state immediately
-        const newCustomAnswerObj = result.customAnswer
-        setCustomAnswers((prev) => [...prev, newCustomAnswerObj])
-
-        // Set the newly added answer as the selected answer
-        setSelectedAnswer(newCustomAnswerObj.text)
-        previousAnswerRef.current = newCustomAnswerObj.text
-
-        // Update vote counts optimistically
-        setVoteCounts((prev) => ({
-          ...prev,
-          [newCustomAnswerObj.text]: 1,
-        }))
-
-        // Update total votes
-        setTotalVotes((prev) => prev + 1)
-
-        // Submit the answer automatically
-        await submitAnswer(currentQuestion.id, newCustomAnswerObj.text)
-        setSubmittedAnswer(newCustomAnswerObj.text)
-        setHasSubmitted(true)
       } else {
         toast({
           title: "Error",
@@ -451,8 +369,7 @@ export default function GamePage() {
                       selectedAnswer === option
                         ? "border-arcane-blue bg-arcane-blue/10"
                         : "border-arcane-blue/20 bg-arcane-navy/50"
-                    } ${timeIsUp ? "opacity-70" : ""} cursor-pointer`}
-                    onClick={() => !timeIsUp && handleAnswerChange(option)}
+                    } ${timeIsUp ? "opacity-70" : ""}`}
                   >
                     {/* Background progress bar */}
                     <div
@@ -461,8 +378,8 @@ export default function GamePage() {
                     />
 
                     <RadioGroupItem value={option} id={`option-${index}`} className="text-arcane-blue z-10" />
-                    <div className="ml-2 w-full z-10">
-                      <Label htmlFor={`option-${index}`} className="text-arcane-gray-light cursor-pointer">
+                    <div className="ml-2 cursor-pointer w-full z-10">
+                      <Label htmlFor={`option-${index}`} className="text-arcane-gray-light">
                         {option}
                       </Label>
 
@@ -491,7 +408,7 @@ export default function GamePage() {
                     placeholder="Add your own answer..."
                     value={newCustomAnswer}
                     onChange={(e) => setNewCustomAnswer(e.target.value)}
-                    className="border-none bg-transparent text-arcane-gray-light focus:ring-0 pl-8 h-auto"
+                    className="border-none bg-transparent text-arcane-gray-light focus:ring-0 p-0 h-auto"
                     disabled={isSubmittingCustom || timeIsUp}
                   />
                   <Button

@@ -8,7 +8,7 @@ import { pusherServer, GAME_CHANNEL, EVENTS } from "@/lib/pusher-server"
 import { generateId, generateUUID } from "@/lib/utils"
 
 // Admin password - in a real app, store this securely
-const ADMIN_PASSWORD = "babyjayce"
+const ADMIN_PASSWORD = "babyshower2023"
 
 // Join game as a participant
 export async function joinGame(name: string) {
@@ -121,40 +121,6 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
   } catch (error) {
     console.error("Error adding custom answer:", error)
     return { success: false, error: "Failed to add custom answer" }
-  }
-}
-
-// Update vote count in real-time without submitting an answer
-export async function updateVoteCount(questionId: string, selectedAnswer: string, previousAnswer: string | null) {
-  const participantId = cookies().get("participantId")?.value
-
-  if (!participantId) {
-    redirect("/join")
-  }
-
-  try {
-    // We don't need to update the database here since this is just for real-time UI updates
-    // The actual answer will be saved when the user submits
-
-    // Get vote counts for the question
-    const { data: voteData, error: voteError } = await getVoteCounts(questionId)
-
-    if (voteError) throw voteError
-
-    console.log("Broadcasting vote counts:", voteData)
-
-    // Broadcast vote update via Pusher
-    try {
-      await pusherServer.trigger(GAME_CHANNEL, EVENTS.VOTE_UPDATE, voteData)
-    } catch (pusherError) {
-      console.error("Error triggering Pusher vote update event:", pusherError)
-      // Continue execution even if Pusher fails
-    }
-
-    return { success: true }
-  } catch (error) {
-    console.error("Error updating vote count:", error)
-    return { success: false, error: "Failed to update vote count" }
   }
 }
 
@@ -525,29 +491,11 @@ export async function showResults() {
     // Update game status to show results
     const { error } = await supabaseAdmin.from("games").update({ status: "results" }).eq("id", "current")
 
-    if (error) {
-      console.error("Database error when updating game status:", error)
-      throw error
-    }
-
-    // Verify the update was successful
-    const { data: game, error: verifyError } = await supabaseAdmin
-      .from("games")
-      .select("status")
-      .eq("id", "current")
-      .single()
-
-    if (verifyError) {
-      console.error("Error verifying game status update:", verifyError)
-      throw verifyError
-    }
-
-    console.log("Game status updated to:", game.status)
+    if (error) throw error
 
     // Trigger Pusher event to notify all clients
     try {
       await pusherServer.trigger(GAME_CHANNEL, EVENTS.SHOW_RESULTS, {})
-      console.log("SHOW_RESULTS event triggered successfully")
     } catch (pusherError) {
       console.error("Error triggering Pusher event:", pusherError)
       // Continue execution even if Pusher fails
