@@ -57,82 +57,11 @@ export default function GamePage() {
   const previousAnswerRef = useRef<string | null>(null)
   const isUpdatingVoteRef = useRef(false)
   const lastVoteUpdateRef = useRef<string | null>(null)
-
-  // Check if we're in preview mode
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const hostname = window.location.hostname
-      const inPreviewMode = hostname === "localhost" || hostname.includes("vercel.app")
-      setIsPreviewMode(inPreviewMode)
-      console.log(`[DEBUG] Running in ${inPreviewMode ? "PREVIEW" : "PRODUCTION"} mode`)
-    }
-  }, [])
-
-  // Memoize the fetchCurrentQuestion function to avoid recreating it on every render
-  const fetchCurrentQuestion = useCallback(async () => {
-    try {
-      console.log("[DEBUG] Fetching current question...")
-      const res = await fetch("/api/current-question")
-      const data = await res.json()
-
-      if (data.waiting) {
-        console.log("[DEBUG] Waiting for game to start")
-        setIsWaiting(true)
-        setCurrentQuestion(null)
-        setTimerActive(false)
-      } else if (data.question) {
-        // Only update if the question has changed
-        if (!currentQuestion || currentQuestion.id !== data.question.id) {
-          console.log("[DEBUG] New question received:", data.question.id)
-          setCurrentQuestion(data.question)
-          setIsWaiting(false)
-          setTimeIsUp(false)
-          setTimerReset((prev) => prev + 1) // Reset timer
-          setTimerActive(true) // Start timer
-          setCustomAnswers([]) // Reset custom answers for new question
-
-          // Reset vote counts for new question
-          const initialVoteCounts: VoteCounts = {}
-          data.question.options.forEach((option: string) => {
-            initialVoteCounts[option] = 0
-          })
-          setVoteCounts(initialVoteCounts)
-          setTotalVotes(0)
-
-          // If the user has already answered this question
-          if (data.answered && data.selectedAnswer) {
-            console.log("[DEBUG] User already answered:", data.selectedAnswer)
-            setSelectedAnswer(data.selectedAnswer)
-            setSubmittedAnswer(data.selectedAnswer)
-            previousAnswerRef.current = data.selectedAnswer
-            setHasSubmitted(true)
-          } else {
-            setSelectedAnswer("")
-            setSubmittedAnswer("")
-            previousAnswerRef.current = null
-            setHasSubmitted(false)
-          }
-
-          // Fetch initial vote counts
-          fetchVoteCounts(data.question.id)
-
-          // Fetch custom answers
-          fetchCustomAnswers(data.question.id)
-        } else {
-          console.log("[DEBUG] Same question, checking for vote updates")
-          // If it's the same question, still fetch vote counts to stay updated
-          fetchVoteCounts(data.question.id)
-        }
-      }
-    } catch (err) {
-      console.error("[DEBUG] Error fetching current question:", err)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [currentQuestion])
+  const lastCustomAnswersUpdateRef = useRef<string | null>(null)
+  const pusherConnectionAttempts = useRef(0)
 
   // Fetch vote counts for the current question
-  const fetchVoteCounts = async (questionId: string) => {
+  const fetchVoteCounts = useCallback(async (questionId: string) => {
     try {
       console.log("[DEBUG] Fetching vote counts for question:", questionId)
       const res = await fetch(`/api/vote-counts?questionId=${questionId}`)
@@ -157,23 +86,191 @@ export default function GamePage() {
     } catch (err) {
       console.error("[DEBUG] Error fetching vote counts:", err)
     }
-  }
+  }, [])
 
   // Fetch custom answers for the current question
-  const fetchCustomAnswers = async (questionId: string) => {
+  const fetchCustomAnswers = useCallback(
+    async (questionId: string) => {
+      try {
+        console.log("[DEBUG] Fetching custom answers for question:", questionId)
+        const res = await fetch(`/api/custom-answers?questionId=${questionId}`)
+        const data = await res.json()
+
+        if (data.customAnswers) {
+          // Generate a unique identifier for this update to avoid duplicates
+          const updateId = JSON.stringify(data.customAnswers)
+
+          // Only update if there are changes
+          if (updateId !== lastCustomAnswersUpdateRef.current) {
+            console.log("[DEBUG] Custom answers received:", data.customAnswers.length)
+
+            // Check if we have new custom answers
+            const currentCustomAnswerIds = new Set(customAnswers.map((ca) => ca.id))
+            const newCustomAnswers = data.customAnswers.filter((ca) => !currentCustomAnswerIds.has(ca.id))
+
+            if (newCustomAnswers.length > 0) {
+              console.log("[DEBUG] 🆕 New custom answers detected via polling:", newCustomAnswers.length)
+
+              // Update custom answers
+              setCustomAnswers(data.customAnswers)
+
+              // Update vote counts to include new custom answers with 0 votes
+              setVoteCounts((prev) => {
+                const newCounts = { ...prev }
+                newCustomAnswers.forEach((ca) => {
+                  if (!newCounts[ca.text]) {
+                    newCounts[ca.text] = 0
+                  }
+                })
+                return newCounts
+              })
+            }
+
+            lastCustomAnswersUpdateRef.current = updateId
+          } else {
+            console.log("[DEBUG] No new custom answers")
+          }
+        }
+      } catch (err) {
+        console.error("[DEBUG] Error fetching custom answers:", err)
+      }
+    },
+    [customAnswers],
+  )
+
+  // Function to check if we're in a preview environment
+  function isPreviewEnvironment() {
+    if (typeof window === "undefined") return false
+
+    const hostname = window.location.hostname
+
+    // Only consider localhost as preview
+    // Your production domain is babyjayceleaguechallenge.vercel.app
+    return (
+      hostname === "localhost" || (hostname.includes("vercel.app") && !hostname.startsWith("babyjayceleaguechallenge"))
+    )
+  }
+
+  // Check if we're in preview mode
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const inPreviewMode = isPreviewEnvironment()
+      setIsPreviewMode(inPreviewMode)
+      console.log(`[DEBUG] Running in ${inPreviewMode ? "PREVIEW" : "PRODUCTION"} mode`)
+    }
+  }, [])
+
+  // Memoize the fetchCurrentQuestion function to avoid recreating it on every render
+  const fetchCurrentQuestion = useCallback(async () => {
     try {
-      console.log("[DEBUG] Fetching custom answers for question:", questionId)
-      const res = await fetch(`/api/custom-answers?questionId=${questionId}`)
+      console.log("[DEBUG] Fetching current question...")
+      const res = await fetch("/api/current-question")
       const data = await res.json()
 
-      if (data.customAnswers) {
-        console.log("[DEBUG] Custom answers received:", data.customAnswers.length)
-        setCustomAnswers(data.customAnswers)
+      if (data.waiting) {
+        console.log("[DEBUG] Waiting for game to start")
+        setIsWaiting(true)
+        setCurrentQuestion(null)
+        setTimerActive(false)
+      } else if (data.question) {
+        // Check if this is a new question or we don't have a question yet
+        if (!currentQuestion || currentQuestion.id !== data.question.id) {
+          console.log("[DEBUG] New question received:", data.question.id)
+          setCurrentQuestion(data.question)
+          setIsWaiting(false)
+          setTimeIsUp(false)
+          setTimerReset((prev) => prev + 1) // Reset timer
+          setTimerActive(true) // Start timer
+
+          // Initialize custom answers from API response
+          if (data.customAnswers) {
+            console.log("[DEBUG] Initial custom answers:", data.customAnswers.length)
+            setCustomAnswers(data.customAnswers)
+            lastCustomAnswersUpdateRef.current = JSON.stringify(data.customAnswers)
+          } else {
+            setCustomAnswers([])
+            lastCustomAnswersUpdateRef.current = null
+          }
+
+          // Reset vote counts for new question
+          const initialVoteCounts: VoteCounts = {}
+          data.question.options.forEach((option: string) => {
+            initialVoteCounts[option] = 0
+          })
+
+          // Add initial vote counts for custom answers too
+          if (data.customAnswers) {
+            data.customAnswers.forEach((ca: CustomAnswer) => {
+              initialVoteCounts[ca.text] = 0
+            })
+          }
+
+          setVoteCounts(initialVoteCounts)
+          setTotalVotes(0)
+
+          // If the user has already answered this question
+          if (data.answered && data.selectedAnswer) {
+            console.log("[DEBUG] User already answered:", data.selectedAnswer)
+            setSelectedAnswer(data.selectedAnswer)
+            setSubmittedAnswer(data.selectedAnswer)
+            previousAnswerRef.current = data.selectedAnswer
+            setHasSubmitted(true)
+          } else {
+            setSelectedAnswer("")
+            setSubmittedAnswer("")
+            previousAnswerRef.current = null
+            setHasSubmitted(false)
+          }
+
+          // Fetch initial vote counts
+          fetchVoteCounts(data.question.id)
+
+          // Log that we've switched to new question via polling
+          console.log("[DEBUG] 🔄 Switched to new question via polling")
+        } else {
+          // Same question, just check if the game state has changed (e.g., time's up)
+          if (data.gameStatus === "results" && !timeIsUp) {
+            console.log("[DEBUG] Game state changed to results via polling")
+            setTimeIsUp(true)
+          }
+
+          // Check for new custom answers even if it's the same question
+          if (data.customAnswers) {
+            const updateId = JSON.stringify(data.customAnswers)
+            if (updateId !== lastCustomAnswersUpdateRef.current) {
+              console.log("[DEBUG] Updated custom answers from current-question API:", data.customAnswers.length)
+
+              // Check for new custom answers
+              const currentCustomAnswerIds = new Set(customAnswers.map((ca) => ca.id))
+              const newCustomAnswers = data.customAnswers.filter((ca) => !currentCustomAnswerIds.has(ca.id))
+
+              if (newCustomAnswers.length > 0) {
+                console.log("[DEBUG] 🆕 New custom answers detected in current-question API:", newCustomAnswers.length)
+                setCustomAnswers(data.customAnswers)
+
+                // Update vote counts to include new custom answers
+                setVoteCounts((prev) => {
+                  const newCounts = { ...prev }
+                  newCustomAnswers.forEach((ca) => {
+                    if (!newCounts[ca.text]) {
+                      newCounts[ca.text] = 0
+                    }
+                  })
+                  return newCounts
+                })
+              }
+
+              lastCustomAnswersUpdateRef.current = updateId
+            }
+          }
+        }
       }
     } catch (err) {
-      console.error("[DEBUG] Error fetching custom answers:", err)
+      console.error("[DEBUG] Error fetching current question:", err)
+    } finally {
+      setIsLoading(false)
     }
-  }
+  }, [currentQuestion, fetchVoteCounts, timeIsUp, customAnswers])
 
   useEffect(() => {
     // Ensure this code only runs in the browser
@@ -194,20 +291,27 @@ export default function GamePage() {
 
     // Set up polling as a fallback for real-time updates
     const pollInterval = setInterval(() => {
-      if (currentQuestion) {
-        console.log("[DEBUG] Polling for updates...")
-        fetchVoteCounts(currentQuestion.id)
-      } else {
-        console.log("[DEBUG] Polling for current question...")
-        fetchCurrentQuestion()
-      }
-    }, 3000) // Poll every 3 seconds (reduced from 5 seconds for more responsive updates)
+      console.log("[DEBUG] Polling cycle started...")
+
+      // Always check for question updates first to ensure we're on the latest question
+      fetchCurrentQuestion().then(() => {
+        // After ensuring we have the latest question, fetch vote counts and custom answers if needed
+        if (currentQuestion) {
+          console.log("[DEBUG] Also polling for vote updates and custom answers...")
+
+          // Run these in parallel
+          Promise.all([fetchVoteCounts(currentQuestion.id), fetchCustomAnswers(currentQuestion.id)]).catch((err) => {
+            console.error("[DEBUG] Error in polling cycle:", err)
+          })
+        }
+      })
+    }, 3000) // Poll every 3 seconds
 
     return () => {
       console.log("[DEBUG] Clearing poll interval")
       clearInterval(pollInterval)
     }
-  }, [router, fetchCurrentQuestion, currentQuestion])
+  }, [router, fetchCurrentQuestion, currentQuestion, fetchVoteCounts, fetchCustomAnswers])
 
   useEffect(() => {
     // Ensure this code only runs in the browser
@@ -234,6 +338,7 @@ export default function GamePage() {
       setTimerReset((prev) => prev + 1) // Reset timer
       setTimerActive(true) // Start timer
       setCustomAnswers([]) // Reset custom answers for new question
+      lastCustomAnswersUpdateRef.current = null // Reset custom answers tracking
 
       // Reset vote counts for new question
       const initialVoteCounts: VoteCounts = {}
@@ -242,6 +347,7 @@ export default function GamePage() {
       })
       setVoteCounts(initialVoteCounts)
       setTotalVotes(0)
+      lastVoteUpdateRef.current = null // Reset vote tracking
     })
 
     // Listen for vote updates with improved logging and error handling
@@ -277,14 +383,23 @@ export default function GamePage() {
 
     // Listen for custom answer updates
     gameChannel.bind(EVENTS.CUSTOM_ANSWER_ADDED, (data: { customAnswer: CustomAnswer }) => {
-      console.log("[DEBUG] Received custom answer via Pusher:", data.customAnswer)
-      setCustomAnswers((prev) => [...prev, data.customAnswer])
+      console.log("[DEBUG] 🆕 Received custom answer via Pusher:", data.customAnswer)
 
-      // Update vote counts to include the new custom answer
-      setVoteCounts((prev) => ({
-        ...prev,
-        [data.customAnswer.text]: 0,
-      }))
+      // Check if we already have this custom answer
+      const exists = customAnswers.some((ca) => ca.id === data.customAnswer.id)
+
+      if (!exists) {
+        // Add the new custom answer
+        setCustomAnswers((prev) => [...prev, data.customAnswer])
+
+        // Update vote counts to include the new custom answer
+        setVoteCounts((prev) => ({
+          ...prev,
+          [data.customAnswer.text]: 0,
+        }))
+      } else {
+        console.log("[DEBUG] Custom answer already exists, skipping")
+      }
     })
 
     // Listen for results announcement
@@ -307,6 +422,8 @@ export default function GamePage() {
       setVoteCounts({})
       setTotalVotes(0)
       setCustomAnswers([])
+      lastCustomAnswersUpdateRef.current = null
+      lastVoteUpdateRef.current = null
     })
 
     return () => {
@@ -318,7 +435,7 @@ export default function GamePage() {
       gameChannel.unbind(EVENTS.SHOW_RESULTS)
       gameChannel.unbind(EVENTS.GAME_RESET)
     }
-  }, [gameChannel, router, currentQuestion, isConnected])
+  }, [gameChannel, router, currentQuestion, isConnected, customAnswers])
 
   const handleAnswerChange = async (value: string) => {
     if (!currentQuestion) return

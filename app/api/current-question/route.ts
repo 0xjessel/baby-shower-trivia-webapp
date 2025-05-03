@@ -33,7 +33,7 @@ export async function GET() {
     }
 
     if (!game || !game.current_question_id || game.status !== "active") {
-      return NextResponse.json({ waiting: true })
+      return NextResponse.json({ waiting: true, gameStatus: game?.status || "waiting" })
     }
 
     // Get the current question
@@ -104,6 +104,7 @@ export async function GET() {
         imageUrl: question.image_url,
         options: allOptions,
       },
+      gameStatus: game.status,
       customAnswers,
       answered: answer ? true : false,
       selectedAnswer,

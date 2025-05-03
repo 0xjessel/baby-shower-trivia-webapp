@@ -14,6 +14,11 @@ export const EVENTS = {
 // Channel names
 export const GAME_CHANNEL = "game-channel"
 
+// Maximum number of connection attempts
+const MAX_CONNECTION_ATTEMPTS = 5
+// Delay between reconnection attempts (in ms)
+const RECONNECTION_DELAY = 2000
+
 // Mock PusherClient for preview environments
 class MockPusherClient {
   eventHandlers: Record<string, Record<string, Function[]>> = {}
@@ -69,50 +74,96 @@ class MockPusherClient {
   }
 }
 
+// Function to check if we're in a preview environment
+function isPreviewEnvironment() {
+  if (typeof window === "undefined") return false
+
+  const hostname = window.location.hostname
+
+  // Only consider localhost as preview
+  // Your production domain is babyjayceleaguechallenge.vercel.app
+  return (
+    hostname === "localhost" || (hostname.includes("vercel.app") && !hostname.startsWith("babyjayceleaguechallenge"))
+  )
+}
+
 // Function to create a Pusher client by fetching configuration from the API
 export async function createPusherClient() {
-  try {
-    // Check if we're in a preview environment
-    const isPreviewEnv = window.location.hostname === "localhost" || window.location.hostname.includes("vercel.app")
+  let connectionAttempts = 0
 
-    if (isPreviewEnv) {
-      console.log("[PusherClient] Using mock client in preview environment")
+  const attemptConnection = async (): Promise<PusherClient> => {
+    try {
+      connectionAttempts++
+      console.log(`[PusherClient] Connection attempt ${connectionAttempts}/${MAX_CONNECTION_ATTEMPTS}`)
+
+      // Check if we're in a preview environment
+      const inPreviewEnv = isPreviewEnvironment()
+
+      if (inPreviewEnv) {
+        console.log("[PusherClient] Using mock client in preview environment")
+        return new MockPusherClient() as unknown as PusherClient
+      }
+
+      console.log("[PusherClient] Using real Pusher client in production environment")
+
+      // Fetch Pusher configuration from the API
+      const response = await fetch("/api/pusher-config")
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch Pusher config: ${response.status}`)
+      }
+
+      const { key, cluster } = await response.json()
+
+      if (!key || !cluster) {
+        throw new Error("Invalid Pusher configuration received")
+      }
+
+      // Enable Pusher logging for debugging
+      PusherClient.logToConsole = true
+
+      // Create and return the Pusher client with improved configuration
+      const client = new PusherClient(key, {
+        cluster,
+        enabledTransports: ["ws", "wss"],
+        forceTLS: true,
+        enableStats: true,
+        disableStats: false,
+        timeout: 15000, // Increase timeout to 15 seconds
+        pongTimeout: 10000, // Increase pong timeout to 10 seconds
+        activityTimeout: 30000, // Increase activity timeout to 30 seconds
+      })
+
+      // Add connection event listeners for better debugging
+      client.connection.bind("connected", () => {
+        console.log("[PusherClient] Successfully connected to Pusher")
+        connectionAttempts = 0 // Reset counter on successful connection
+      })
+
+      client.connection.bind("disconnected", () => {
+        console.log("[PusherClient] Disconnected from Pusher")
+      })
+
+      client.connection.bind("error", (err: any) => {
+        console.error("[PusherClient] Connection error:", err)
+      })
+
+      return client
+    } catch (error) {
+      console.error(`[PusherClient] Failed to initialize Pusher client (attempt ${connectionAttempts}):`, error)
+
+      // If we haven't reached the maximum number of attempts, try again
+      if (connectionAttempts < MAX_CONNECTION_ATTEMPTS) {
+        console.log(`[PusherClient] Retrying in ${RECONNECTION_DELAY / 1000} seconds...`)
+        await new Promise((resolve) => setTimeout(resolve, RECONNECTION_DELAY))
+        return attemptConnection()
+      }
+
+      // If all attempts fail, return mock client as fallback
+      console.log("[PusherClient] All connection attempts failed, falling back to mock client")
       return new MockPusherClient() as unknown as PusherClient
     }
-
-    // Fetch Pusher configuration from the API
-    const response = await fetch("/api/pusher-config")
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch Pusher config: ${response.status}`)
-    }
-
-    const { key, cluster } = await response.json()
-
-    if (!key || !cluster) {
-      throw new Error("Invalid Pusher configuration received")
-    }
-
-    // Enable Pusher logging for debugging
-    PusherClient.logToConsole = true
-
-    // Create and return the Pusher client with improved configuration
-    return new PusherClient(key, {
-      cluster,
-      enabledTransports: ["ws", "wss"],
-      forceTLS: true,
-      enableStats: true,
-      disableStats: false,
-      authEndpoint: "/api/pusher-auth", // Add this if you need private channels
-      auth: {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
-    })
-  } catch (error) {
-    console.error("Failed to initialize Pusher client:", error)
-    // Return mock client as fallback
-    return new MockPusherClient() as unknown as PusherClient
   }
+
+  return attemptConnection()
 }

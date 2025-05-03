@@ -3,49 +3,51 @@
 import { useEffect, useState } from "react"
 import { usePusher } from "@/hooks/use-pusher"
 
+// Function to check if we're in a preview environment
+function isPreviewEnvironment() {
+  if (typeof window === "undefined") return false
+
+  const hostname = window.location.hostname
+
+  // Only consider localhost as preview
+  // Your production domain is babyjayceleaguechallenge.vercel.app
+  return (
+    hostname === "localhost" || (hostname.includes("vercel.app") && !hostname.startsWith("babyjayceleaguechallenge"))
+  )
+}
+
 export function PusherStatus() {
-  const { gameChannel, isLoading, isConnected } = usePusher()
-  const [status, setStatus] = useState<"connecting" | "connected" | "error" | "preview">("connecting")
+  const { connectionStatus, isLoading, isConnected } = usePusher()
   const [isPreview, setIsPreview] = useState(false)
 
   useEffect(() => {
     // Check if we're in a preview environment
-    const hostname = window.location.hostname
-    const isPreviewEnv = hostname === "localhost" || hostname.includes("vercel.app")
-    setIsPreview(isPreviewEnv)
-
-    if (isPreviewEnv) {
-      setStatus("preview")
-    } else if (isLoading) {
-      setStatus("connecting")
-    } else if (isConnected) {
-      setStatus("connected")
-    } else {
-      setStatus("error")
-    }
-  }, [gameChannel, isLoading, isConnected])
+    setIsPreview(isPreviewEnvironment())
+  }, [])
 
   return (
     <div className="fixed bottom-2 right-2 text-xs px-2 py-1 rounded-full flex items-center gap-1 bg-arcane-navy/80 border border-arcane-blue/20">
       <div
         className={`w-2 h-2 rounded-full ${
-          status === "connected"
+          connectionStatus === "connected"
             ? "bg-green-500"
-            : status === "preview"
+            : connectionStatus === "polling"
               ? "bg-arcane-blue"
-              : status === "connecting"
+              : connectionStatus === "connecting"
                 ? "bg-arcane-gold"
                 : "bg-red-500"
         }`}
       />
       <span className="text-arcane-gray">
-        {status === "connected"
+        {connectionStatus === "connected"
           ? "Realtime connected"
-          : status === "preview"
+          : connectionStatus === "polling"
             ? "Preview mode (polling)"
-            : status === "connecting"
+            : connectionStatus === "connecting"
               ? "Connecting..."
-              : "Connection error"}
+              : connectionStatus === "disconnected"
+                ? "Disconnected (retrying)"
+                : "Connection error"}
       </span>
     </div>
   )
