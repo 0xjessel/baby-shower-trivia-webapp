@@ -16,24 +16,56 @@ export const GAME_CHANNEL = "game-channel"
 
 // Mock PusherClient for preview environments
 class MockPusherClient {
+  eventHandlers: Record<string, Record<string, Function[]>> = {}
+
   subscribe(channel: string) {
     console.log(`[MockPusherClient] Subscribing to channel: ${channel}`)
+
+    if (!this.eventHandlers[channel]) {
+      this.eventHandlers[channel] = {}
+    }
+
     return {
       bind: (event: string, callback: Function) => {
         console.log(`[MockPusherClient] Binding to event "${event}" on channel "${channel}"`)
+        if (!this.eventHandlers[channel][event]) {
+          this.eventHandlers[channel][event] = []
+        }
+        this.eventHandlers[channel][event].push(callback)
       },
       unbind: (event: string) => {
         console.log(`[MockPusherClient] Unbinding from event "${event}" on channel "${channel}"`)
+        if (this.eventHandlers[channel] && this.eventHandlers[channel][event]) {
+          delete this.eventHandlers[channel][event]
+        }
       },
     }
   }
 
   unsubscribe(channel: string) {
     console.log(`[MockPusherClient] Unsubscribing from channel: ${channel}`)
+    if (this.eventHandlers[channel]) {
+      delete this.eventHandlers[channel]
+    }
   }
 
   disconnect() {
     console.log(`[MockPusherClient] Disconnecting`)
+    this.eventHandlers = {}
+  }
+
+  // Method to simulate receiving an event (for testing)
+  simulateEvent(channel: string, event: string, data: any) {
+    console.log(`[MockPusherClient] Simulating event "${event}" on channel "${channel}" with data:`, data)
+    if (this.eventHandlers[channel] && this.eventHandlers[channel][event]) {
+      this.eventHandlers[channel][event].forEach((callback) => {
+        try {
+          callback(data)
+        } catch (error) {
+          console.error(`[MockPusherClient] Error in event handler:`, error)
+        }
+      })
+    }
   }
 }
 

@@ -59,9 +59,9 @@
     "vaul": "^0.9.6",
     "zod": "^3.24.1",
     "@supabase/supabase-js": "latest",
+    "qrcode": "latest",
     "pusher-js": "latest",
-    "pusher": "latest",
-    "qrcode": "latest"
+    "pusher": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

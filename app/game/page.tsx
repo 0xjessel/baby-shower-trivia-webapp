@@ -50,25 +50,40 @@ export default function GamePage() {
   const [customAnswers, setCustomAnswers] = useState<CustomAnswer[]>([])
   const [newCustomAnswer, setNewCustomAnswer] = useState("")
   const [isSubmittingCustom, setIsSubmittingCustom] = useState(false)
+  const [isPreviewMode, setIsPreviewMode] = useState(false)
   const playerName = useRef<string>("")
   const router = useRouter()
-  const { gameChannel, isLoading: isPusherLoading } = usePusher()
+  const { gameChannel, isLoading: isPusherLoading, isConnected } = usePusher()
   const previousAnswerRef = useRef<string | null>(null)
   const isUpdatingVoteRef = useRef(false)
+  const lastVoteUpdateRef = useRef<string | null>(null)
+
+  // Check if we're in preview mode
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const hostname = window.location.hostname
+      const inPreviewMode = hostname === "localhost" || hostname.includes("vercel.app")
+      setIsPreviewMode(inPreviewMode)
+      console.log(`[DEBUG] Running in ${inPreviewMode ? "PREVIEW" : "PRODUCTION"} mode`)
+    }
+  }, [])
 
   // Memoize the fetchCurrentQuestion function to avoid recreating it on every render
   const fetchCurrentQuestion = useCallback(async () => {
     try {
+      console.log("[DEBUG] Fetching current question...")
       const res = await fetch("/api/current-question")
       const data = await res.json()
 
       if (data.waiting) {
+        console.log("[DEBUG] Waiting for game to start")
         setIsWaiting(true)
         setCurrentQuestion(null)
         setTimerActive(false)
       } else if (data.question) {
         // Only update if the question has changed
         if (!currentQuestion || currentQuestion.id !== data.question.id) {
+          console.log("[DEBUG] New question received:", data.question.id)
           setCurrentQuestion(data.question)
           setIsWaiting(false)
           setTimeIsUp(false)
@@ -86,6 +101,7 @@ export default function GamePage() {
 
           // If the user has already answered this question
           if (data.answered && data.selectedAnswer) {
+            console.log("[DEBUG] User already answered:", data.selectedAnswer)
             setSelectedAnswer(data.selectedAnswer)
             setSubmittedAnswer(data.selectedAnswer)
             previousAnswerRef.current = data.selectedAnswer
@@ -102,10 +118,14 @@ export default function GamePage() {
 
           // Fetch custom answers
           fetchCustomAnswers(data.question.id)
+        } else {
+          console.log("[DEBUG] Same question, checking for vote updates")
+          // If it's the same question, still fetch vote counts to stay updated
+          fetchVoteCounts(data.question.id)
         }
       }
     } catch (err) {
-      console.error("Error fetching current question:", err)
+      console.error("[DEBUG] Error fetching current question:", err)
     } finally {
       setIsLoading(false)
     }
@@ -114,29 +134,44 @@ export default function GamePage() {
   // Fetch vote counts for the current question
   const fetchVoteCounts = async (questionId: string) => {
     try {
+      console.log("[DEBUG] Fetching vote counts for question:", questionId)
       const res = await fetch(`/api/vote-counts?questionId=${questionId}`)
       const data = await res.json()
 
       if (data.voteCounts) {
-        setVoteCounts(data.voteCounts)
-        setTotalVotes(data.totalVotes)
+        console.log("[DEBUG] Vote counts received via API:", data.voteCounts, "Total:", data.totalVotes)
+
+        // Generate a unique identifier for this update to avoid duplicates
+        const updateId = JSON.stringify(data.voteCounts) + data.totalVotes + (data.timestamp || Date.now())
+
+        // Only update if this is different from the last update we processed
+        if (updateId !== lastVoteUpdateRef.current) {
+          console.log("[DEBUG] Updating vote counts from API poll")
+          setVoteCounts(data.voteCounts)
+          setTotalVotes(data.totalVotes)
+          lastVoteUpdateRef.current = updateId
+        } else {
+          console.log("[DEBUG] Skipping duplicate vote count update")
+        }
       }
     } catch (err) {
-      console.error("Error fetching vote counts:", err)
+      console.error("[DEBUG] Error fetching vote counts:", err)
     }
   }
 
   // Fetch custom answers for the current question
   const fetchCustomAnswers = async (questionId: string) => {
     try {
+      console.log("[DEBUG] Fetching custom answers for question:", questionId)
       const res = await fetch(`/api/custom-answers?questionId=${questionId}`)
       const data = await res.json()
 
       if (data.customAnswers) {
+        console.log("[DEBUG] Custom answers received:", data.customAnswers.length)
         setCustomAnswers(data.customAnswers)
       }
     } catch (err) {
-      console.error("Error fetching custom answers:", err)
+      console.error("[DEBUG] Error fetching custom answers:", err)
     }
   }
 
@@ -152,27 +187,42 @@ export default function GamePage() {
     }
 
     playerName.current = name
+    console.log(`[DEBUG] Player authenticated: ${name}`)
 
     // Fetch current question on initial load
     fetchCurrentQuestion()
 
     // Set up polling as a fallback for real-time updates
     const pollInterval = setInterval(() => {
-      fetchCurrentQuestion()
-    }, 5000) // Poll every 5 seconds
+      if (currentQuestion) {
+        console.log("[DEBUG] Polling for updates...")
+        fetchVoteCounts(currentQuestion.id)
+      } else {
+        console.log("[DEBUG] Polling for current question...")
+        fetchCurrentQuestion()
+      }
+    }, 3000) // Poll every 3 seconds (reduced from 5 seconds for more responsive updates)
 
-    return () => clearInterval(pollInterval)
-  }, [router, fetchCurrentQuestion])
+    return () => {
+      console.log("[DEBUG] Clearing poll interval")
+      clearInterval(pollInterval)
+    }
+  }, [router, fetchCurrentQuestion, currentQuestion])
 
   useEffect(() => {
     // Ensure this code only runs in the browser
-    if (typeof window === "undefined" || !gameChannel) return
+    if (typeof window === "undefined") return
 
-    console.log("Setting up Pusher event listeners")
+    if (!gameChannel) {
+      console.log("[DEBUG] No game channel available, relying on polling")
+      return
+    }
+
+    console.log("[DEBUG] Setting up Pusher event listeners, connected:", isConnected)
 
     // Set up Pusher event listeners
     gameChannel.bind(EVENTS.QUESTION_UPDATE, (data: { question: Question }) => {
-      console.log("Received question update:", data)
+      console.log("[DEBUG] Received question update via Pusher:", data.question.id)
       setCurrentQuestion(data.question)
       setSelectedAnswer("")
       setSubmittedAnswer("")
@@ -195,21 +245,39 @@ export default function GamePage() {
     })
 
     // Listen for vote updates with improved logging and error handling
-    gameChannel.bind(EVENTS.VOTE_UPDATE, (data: { voteCounts: VoteCounts; totalVotes: number; questionId: string }) => {
-      console.log("Received vote update:", data)
+    gameChannel.bind(
+      EVENTS.VOTE_UPDATE,
+      (data: { voteCounts: VoteCounts; totalVotes: number; questionId: string; updatedAt?: string }) => {
+        console.log("[DEBUG] 🔴 VOTE UPDATE RECEIVED via Pusher:", data)
+        console.log("[DEBUG] Current question ID:", currentQuestion?.id)
+        console.log("[DEBUG] Update question ID:", data.questionId)
+        console.log("[DEBUG] Vote counts:", data.voteCounts)
+        console.log("[DEBUG] Total votes:", data.totalVotes)
+        console.log("[DEBUG] Updated at:", data.updatedAt || "unknown")
 
-      // Only update if this update is for the current question
-      if (currentQuestion && data.questionId === currentQuestion.id) {
-        setVoteCounts(data.voteCounts)
-        setTotalVotes(data.totalVotes)
-      } else {
-        console.log("Ignoring vote update for different question")
-      }
-    })
+        // Only update if this update is for the current question
+        if (currentQuestion && data.questionId === currentQuestion.id) {
+          // Generate a unique identifier for this update to avoid duplicates
+          const updateId = JSON.stringify(data.voteCounts) + data.totalVotes + (data.updatedAt || Date.now())
+
+          // Only update if this is different from the last update we processed
+          if (updateId !== lastVoteUpdateRef.current) {
+            console.log("[DEBUG] 🟢 Updating vote counts from Pusher event")
+            setVoteCounts(data.voteCounts)
+            setTotalVotes(data.totalVotes)
+            lastVoteUpdateRef.current = updateId
+          } else {
+            console.log("[DEBUG] Skipping duplicate Pusher vote update")
+          }
+        } else {
+          console.log("[DEBUG] Ignoring vote update for different question")
+        }
+      },
+    )
 
     // Listen for custom answer updates
     gameChannel.bind(EVENTS.CUSTOM_ANSWER_ADDED, (data: { customAnswer: CustomAnswer }) => {
-      console.log("Received custom answer:", data)
+      console.log("[DEBUG] Received custom answer via Pusher:", data.customAnswer)
       setCustomAnswers((prev) => [...prev, data.customAnswer])
 
       // Update vote counts to include the new custom answer
@@ -221,13 +289,13 @@ export default function GamePage() {
 
     // Listen for results announcement
     gameChannel.bind(EVENTS.SHOW_RESULTS, () => {
-      console.log("Received SHOW_RESULTS event, redirecting to results page")
+      console.log("[DEBUG] Received SHOW_RESULTS event, redirecting to results page")
       router.push("/results")
     })
 
     // Listen for game reset
     gameChannel.bind(EVENTS.GAME_RESET, () => {
-      console.log("Received GAME_RESET event")
+      console.log("[DEBUG] Received GAME_RESET event")
       setCurrentQuestion(null)
       setSelectedAnswer("")
       setSubmittedAnswer("")
@@ -242,7 +310,7 @@ export default function GamePage() {
     })
 
     return () => {
-      console.log("Cleaning up Pusher event listeners")
+      console.log("[DEBUG] Cleaning up Pusher event listeners")
       // Clean up event listeners
       gameChannel.unbind(EVENTS.QUESTION_UPDATE)
       gameChannel.unbind(EVENTS.VOTE_UPDATE)
@@ -250,14 +318,14 @@ export default function GamePage() {
       gameChannel.unbind(EVENTS.SHOW_RESULTS)
       gameChannel.unbind(EVENTS.GAME_RESET)
     }
-  }, [gameChannel, router, currentQuestion])
+  }, [gameChannel, router, currentQuestion, isConnected])
 
   const handleAnswerChange = async (value: string) => {
     if (!currentQuestion) return
 
     const previousAnswer = previousAnswerRef.current
 
-    console.log("Answer changed:", {
+    console.log("[DEBUG] Answer changed:", {
       from: previousAnswer || "none",
       to: value,
       questionId: currentQuestion.id,
@@ -278,6 +346,7 @@ export default function GamePage() {
       // Increment the count for the newly selected answer
       newCounts[value] = (prev[value] || 0) + 1
 
+      console.log("[DEBUG] Updated vote counts (optimistic):", newCounts)
       return newCounts
     })
 
@@ -296,22 +365,24 @@ export default function GamePage() {
 
     // Prevent multiple simultaneous vote updates
     if (isUpdatingVoteRef.current) {
-      console.log("Vote update already in progress, skipping")
+      console.log("[DEBUG] Vote update already in progress, skipping")
       return
     }
 
     isUpdatingVoteRef.current = true
 
     try {
-      console.log("Sending vote update to server")
+      console.log("[DEBUG] Sending vote update to server")
       // Send the update to the server
       const result = await updateVoteCount(currentQuestion.id, value, previousAnswer)
 
       if (!result.success) {
-        console.error("Server reported error updating vote count:", result.error)
+        console.error("[DEBUG] Server reported error updating vote count:", result.error)
+      } else {
+        console.log("[DEBUG] Server confirmed vote update success")
       }
     } catch (error) {
-      console.error("Failed to update vote count:", error)
+      console.error("[DEBUG] Failed to update vote count:", error)
       // If the server update fails, we could revert the optimistic update here
       // but for simplicity, we'll leave it as is since the next poll will sync
     } finally {
@@ -323,18 +394,25 @@ export default function GamePage() {
     if (!selectedAnswer || !currentQuestion) return
 
     try {
+      console.log("[DEBUG] Submitting answer:", selectedAnswer)
       // Optimistically update UI
       setSubmittedAnswer(selectedAnswer)
       setHasSubmitted(true)
 
       // Send to server
-      await submitAnswer(currentQuestion.id, selectedAnswer)
+      const result = await submitAnswer(currentQuestion.id, selectedAnswer)
 
-      toast({
-        title: "Answer submitted!",
-      })
+      if (result.success) {
+        console.log("[DEBUG] Answer submitted successfully")
+        toast({
+          title: "Answer submitted!",
+        })
+      } else {
+        console.error("[DEBUG] Server reported error submitting answer:", result.error)
+        throw new Error(result.error || "Failed to submit answer")
+      }
     } catch (error) {
-      console.error("Failed to submit answer:", error)
+      console.error("[DEBUG] Failed to submit answer:", error)
 
       // Revert optimistic update on error
       setHasSubmitted(false)
@@ -434,6 +512,9 @@ export default function GamePage() {
           <CardContent className="pt-6">
             <h2 className="text-xl font-semibold text-arcane-gray-light">Waiting for the game to start</h2>
             <p className="mt-2 text-arcane-gray">The host will start the game soon!</p>
+            {isPreviewMode && (
+              <p className="mt-4 text-xs text-arcane-gold">Running in preview mode (polling for updates)</p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -554,6 +635,10 @@ export default function GamePage() {
 
           {timeIsUp && (
             <p className="text-center text-arcane-gray text-sm mt-2">Time's up! Waiting for the next question...</p>
+          )}
+
+          {isPreviewMode && (
+            <p className="mt-4 text-xs text-center text-arcane-gold">Running in preview mode (polling for updates)</p>
           )}
         </CardContent>
       </Card>

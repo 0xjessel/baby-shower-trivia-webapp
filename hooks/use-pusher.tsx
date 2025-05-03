@@ -29,17 +29,50 @@ export function PusherProvider({ children }: { children: React.ReactNode }) {
 
     const initializePusher = async () => {
       try {
+        console.log("[PUSHER] Initializing Pusher client...")
         const client = await createPusherClient()
 
         if (isMounted) {
           setPusherClient(client)
+          console.log("[PUSHER] Subscribing to game channel...")
           const channel = client.subscribe(GAME_CHANNEL)
+
+          // Add connection status event listeners if this is a real Pusher client
+          if ("connection" in client) {
+            client.connection.bind("connected", () => {
+              console.log("[PUSHER] Connected successfully!")
+              if (isMounted) setIsConnected(true)
+            })
+
+            client.connection.bind("disconnected", () => {
+              console.log("[PUSHER] Disconnected!")
+              if (isMounted) setIsConnected(false)
+            })
+
+            client.connection.bind("error", (err: any) => {
+              console.error("[PUSHER] Connection error:", err)
+              if (isMounted) setIsConnected(false)
+            })
+          } else {
+            // This is our mock client for preview mode
+            console.log("[PUSHER] Using mock client (preview mode)")
+          }
+
           setGameChannel(channel)
           setIsConnected(true)
           setIsLoading(false)
+
+          // Debug channel binding
+          if (channel.bind) {
+            const originalBind = channel.bind
+            channel.bind = function (eventName: string, callback: Function) {
+              console.log(`[PUSHER] Binding to event "${eventName}" on channel "${GAME_CHANNEL}"`)
+              return originalBind.call(this, eventName, callback)
+            }
+          }
         }
       } catch (error) {
-        console.error("Error initializing Pusher:", error)
+        console.error("[PUSHER] Error initializing Pusher:", error)
         if (isMounted) {
           setIsConnected(false)
           setIsLoading(false)
@@ -52,8 +85,11 @@ export function PusherProvider({ children }: { children: React.ReactNode }) {
     return () => {
       isMounted = false
       if (pusherClient) {
+        console.log("[PUSHER] Cleaning up Pusher connection")
         pusherClient.unsubscribe(GAME_CHANNEL)
-        pusherClient.disconnect()
+        if ("disconnect" in pusherClient) {
+          pusherClient.disconnect()
+        }
       }
     }
   }, [])

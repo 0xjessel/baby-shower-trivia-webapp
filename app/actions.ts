@@ -133,6 +133,13 @@ export async function updateVoteCount(questionId: string, selectedAnswer: string
   }
 
   try {
+    console.log("[SERVER] updateVoteCount called:", {
+      questionId,
+      selectedAnswer,
+      previousAnswer,
+      participantId: participantId.substring(0, 8) + "...", // Log partial ID for privacy
+    })
+
     // Get the answer option IDs for both the selected and previous answers
     let selectedOptionId = null
     let previousOptionId = null
@@ -146,7 +153,10 @@ export async function updateVoteCount(questionId: string, selectedAnswer: string
         .eq("text", selectedAnswer)
         .maybeSingle()
 
-      if (selectedError) throw selectedError
+      if (selectedError) {
+        console.error("[SERVER] Error getting selected option:", selectedError)
+        throw selectedError
+      }
       if (selectedOption) selectedOptionId = selectedOption.id
     }
 
@@ -159,7 +169,10 @@ export async function updateVoteCount(questionId: string, selectedAnswer: string
         .eq("text", previousAnswer)
         .maybeSingle()
 
-      if (prevError) throw prevError
+      if (prevError) {
+        console.error("[SERVER] Error getting previous option:", prevError)
+        throw prevError
+      }
       if (prevOption) previousOptionId = prevOption.id
     }
 
@@ -169,26 +182,34 @@ export async function updateVoteCount(questionId: string, selectedAnswer: string
     // Get updated vote counts for the question
     const { data: voteData, error: voteError } = await getVoteCounts(questionId)
 
-    if (voteError) throw voteError
+    if (voteError) {
+      console.error("[SERVER] Error getting vote counts:", voteError)
+      throw voteError
+    }
 
-    console.log("Broadcasting vote counts:", voteData)
+    console.log("[SERVER] Broadcasting vote counts:", voteData)
 
     // Broadcast vote update via Pusher with more detailed information
     try {
-      await pusherServer.trigger(GAME_CHANNEL, EVENTS.VOTE_UPDATE, {
+      const eventData = {
         voteCounts: voteData.voteCounts,
         totalVotes: voteData.totalVotes,
         questionId: questionId,
         updatedAt: new Date().toISOString(),
-      })
+        source: "updateVoteCount",
+      }
+
+      console.log("[SERVER] Triggering Pusher event:", EVENTS.VOTE_UPDATE, eventData)
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.VOTE_UPDATE, eventData)
+      console.log("[SERVER] Pusher event triggered successfully")
     } catch (pusherError) {
-      console.error("Error triggering Pusher vote update event:", pusherError)
+      console.error("[SERVER] Error triggering Pusher vote update event:", pusherError)
       // Continue execution even if Pusher fails
     }
 
     return { success: true }
   } catch (error) {
-    console.error("Error updating vote count:", error)
+    console.error("[SERVER] Error updating vote count:", error)
     return { success: false, error: "Failed to update vote count" }
   }
 }
