@@ -6,11 +6,15 @@ import QRCode from "@/components/qr-code"
 export default function HomePage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-arcane-navy p-4">
-      <div className="w-full max-w-md space-y-8">
+      <div className="w-full max-w-2xl space-y-8">
         <div className="text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-arcane-blue">
-            Future of Piltover: Baby Jayce's League Challenge
-          </h1>
+          <div className="mb-6 rounded-lg overflow-hidden shadow-lg border-2 border-arcane-gold/50">
+            <img
+              src="/images/hero-banner.png"
+              alt="Future of Piltover: Baby Jayce's League Challenge"
+              className="w-full h-auto"
+            />
+          </div>
           <p className="mt-2 text-lg text-arcane-gray">Where Piltover Smarts Meet Baby Shower Fun.</p>
         </div>
 

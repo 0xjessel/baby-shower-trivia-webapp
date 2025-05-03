@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Trash2 } from "lucide-react"
+import { Trash2, PlayCircle } from "lucide-react"
 import { deleteQuestion } from "@/app/actions"
 
 interface Question {
@@ -15,7 +15,11 @@ interface Question {
   correctAnswer: string
 }
 
-export default function QuestionList() {
+interface QuestionListProps {
+  currentQuestionId?: string | null
+}
+
+export default function QuestionList({ currentQuestionId }: QuestionListProps) {
   const [questions, setQuestions] = useState<Question[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
@@ -94,13 +98,29 @@ export default function QuestionList() {
   return (
     <div className="space-y-4">
       {questions.map((question, index) => (
-        <Card key={question.id} className="border border-arcane-blue/30 bg-arcane-navy/80">
+        <Card
+          key={question.id}
+          className={`border ${
+            question.id === currentQuestionId
+              ? "border-arcane-gold border-2 shadow-lg shadow-arcane-gold/20"
+              : "border-arcane-blue/30"
+          } bg-arcane-navy/80 transition-all duration-200`}
+        >
           <CardContent className="p-4">
             <div className="flex items-start justify-between">
-              <div>
-                <span className="inline-block rounded-full bg-arcane-blue/20 px-2 py-1 text-xs font-medium text-arcane-blue">
-                  {question.type === "baby-picture" ? "Baby Picture" : "Text Question"}
-                </span>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="inline-block rounded-full bg-arcane-blue/20 px-2 py-1 text-xs font-medium text-arcane-blue">
+                    {question.type === "baby-picture" ? "Baby Picture" : "Text Question"}
+                  </span>
+
+                  {question.id === currentQuestionId && (
+                    <span className="inline-flex items-center rounded-full bg-arcane-gold/20 px-2 py-1 text-xs font-medium text-arcane-gold">
+                      <PlayCircle className="mr-1 h-3 w-3" />
+                      Active
+                    </span>
+                  )}
+                </div>
                 <h3 className="mt-2 font-medium text-arcane-gray-light">{question.question}</h3>
               </div>
               <Button
@@ -108,6 +128,8 @@ export default function QuestionList() {
                 size="icon"
                 onClick={() => handleDelete(question.id)}
                 className="text-red-400 hover:bg-red-900/20 hover:text-red-300"
+                disabled={question.id === currentQuestionId}
+                title={question.id === currentQuestionId ? "Cannot delete active question" : "Delete question"}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>

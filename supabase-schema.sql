@@ -20,7 +20,7 @@ CREATE TABLE participants (
 
 -- Answers table
 CREATE TABLE answers (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY,
   participant_id UUID NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
   question_id UUID NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
   answer TEXT NOT NULL,

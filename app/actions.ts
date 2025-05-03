@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { supabaseAdmin } from "@/lib/supabase"
 import { pusherServer, GAME_CHANNEL, EVENTS } from "@/lib/pusher-server"
-import { generateId } from "@/lib/utils"
+import { generateId, generateUUID } from "@/lib/utils"
 
 // Admin password - in a real app, store this securely
 const ADMIN_PASSWORD = "babyshower2023"
@@ -13,8 +13,8 @@ const ADMIN_PASSWORD = "babyshower2023"
 // Join game as a participant
 export async function joinGame(name: string) {
   try {
-    // Create a new participant
-    const participantId = generateId()
+    // Create a new participant with a proper UUID
+    const participantId = generateUUID()
 
     const { error } = await supabaseAdmin.from("participants").insert({
       id: participantId,
@@ -98,8 +98,9 @@ export async function submitAnswer(questionId: string, answer: string) {
 
       if (updateError) throw updateError
     } else {
-      // Insert new answer
+      // Insert new answer with a proper UUID
       const { error: insertError } = await supabaseAdmin.from("answers").insert({
+        id: generateUUID(),
         participant_id: participantId,
         question_id: questionId,
         answer: answer,
@@ -207,6 +208,92 @@ export async function nextQuestion() {
   } catch (error) {
     console.error("Error advancing to next question:", error)
     return { success: false, error: "Failed to advance to next question" }
+  }
+}
+
+// Go back to previous question
+export async function previousQuestion() {
+  // Check if admin
+  const adminToken = cookies().get("adminToken")?.value
+  if (!adminToken) {
+    return { success: false, error: "Unauthorized" }
+  }
+
+  try {
+    // Get all questions
+    const { data: questions, error: questionsError } = await supabaseAdmin
+      .from("questions")
+      .select("id")
+      .order("created_at", { ascending: true })
+
+    if (questionsError) throw questionsError
+
+    if (questions.length === 0) {
+      return { success: false, error: "No questions available" }
+    }
+
+    // Get current game state
+    const { data: game, error: gameError } = await supabaseAdmin
+      .from("games")
+      .select("*")
+      .eq("id", "current")
+      .maybeSingle()
+
+    if (gameError) throw gameError
+
+    if (!game || !game.current_question_id) {
+      return { success: false, error: "No active question to go back from" }
+    }
+
+    // Find the index of the current question
+    const currentQuestionIndex = questions.findIndex((q) => q.id === game.current_question_id)
+    if (currentQuestionIndex === -1) {
+      return { success: false, error: "Current question not found" }
+    }
+
+    // Calculate previous question index (with wrap-around)
+    const previousIndex = currentQuestionIndex > 0 ? currentQuestionIndex - 1 : questions.length - 1
+
+    // Update the game with the previous question
+    const { error: updateError } = await supabaseAdmin
+      .from("games")
+      .update({
+        current_question_id: questions[previousIndex].id,
+        status: "active",
+      })
+      .eq("id", "current")
+
+    if (updateError) throw updateError
+
+    // Get the full question details to send to clients
+    const { data: questionDetails, error: detailsError } = await supabaseAdmin
+      .from("questions")
+      .select("id, type, question, image_url, options")
+      .eq("id", questions[previousIndex].id)
+      .single()
+
+    if (detailsError) throw detailsError
+
+    // Trigger Pusher event to notify all clients
+    try {
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.QUESTION_UPDATE, {
+        question: {
+          id: questionDetails.id,
+          type: questionDetails.type,
+          question: questionDetails.question,
+          imageUrl: questionDetails.image_url,
+          options: questionDetails.options,
+        },
+      })
+    } catch (pusherError) {
+      console.error("Error triggering Pusher event:", pusherError)
+      // Continue execution even if Pusher fails
+    }
+
+    return { success: true }
+  } catch (error) {
+    console.error("Error going back to previous question:", error)
+    return { success: false, error: "Failed to go back to previous question" }
   }
 }
 
@@ -374,8 +461,8 @@ export async function uploadQuestion(formData: FormData) {
       imageUrl = urlData.publicUrl
     }
 
-    // Insert the question into the database
-    const questionId = generateId()
+    // Insert the question into the database with a proper UUID
+    const questionId = generateUUID()
 
     const { error } = await supabaseAdmin.from("questions").insert({
       id: questionId,

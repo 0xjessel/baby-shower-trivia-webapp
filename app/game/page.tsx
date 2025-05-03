@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label"
 import { submitAnswer } from "@/app/actions"
 import { usePusher } from "@/hooks/use-pusher"
 import { EVENTS } from "@/lib/pusher-client"
+import CountdownTimer from "@/components/countdown-timer"
+import { toast } from "@/hooks/use-toast"
 
 interface Question {
   id: string
@@ -24,6 +26,9 @@ export default function GamePage() {
   const [hasSubmitted, setHasSubmitted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isWaiting, setIsWaiting] = useState(false)
+  const [timerActive, setTimerActive] = useState(false)
+  const [timerReset, setTimerReset] = useState(0)
+  const [timeIsUp, setTimeIsUp] = useState(false)
   const router = useRouter()
   const { gameChannel, isLoading: isPusherLoading } = usePusher()
 
@@ -56,6 +61,9 @@ export default function GamePage() {
       setHasSubmitted(false)
       setIsLoading(false)
       setIsWaiting(false)
+      setTimeIsUp(false)
+      setTimerReset((prev) => prev + 1) // Reset timer
+      setTimerActive(true) // Start timer
     })
 
     // Listen for results announcement
@@ -69,6 +77,8 @@ export default function GamePage() {
       setSelectedAnswer("")
       setHasSubmitted(false)
       setIsWaiting(true)
+      setTimerActive(false)
+      setTimeIsUp(false)
     })
 
     return () => {
@@ -87,11 +97,15 @@ export default function GamePage() {
       if (data.waiting) {
         setIsWaiting(true)
         setCurrentQuestion(null)
+        setTimerActive(false)
       } else if (data.question) {
         // Only update if the question has changed
         if (!currentQuestion || currentQuestion.id !== data.question.id) {
           setCurrentQuestion(data.question)
           setIsWaiting(false)
+          setTimeIsUp(false)
+          setTimerReset((prev) => prev + 1) // Reset timer
+          setTimerActive(true) // Start timer
 
           // If the user has already answered this question
           if (data.answered && data.selectedAnswer) {
@@ -117,9 +131,32 @@ export default function GamePage() {
 
     try {
       await submitAnswer(currentQuestion.id, selectedAnswer)
+      toast({
+        title: "Answer submitted!",
+        description: "You can change your answer until time runs out.",
+      })
     } catch (error) {
       console.error("Failed to submit answer:", error)
       setHasSubmitted(false)
+      toast({
+        title: "Error",
+        description: "Failed to submit your answer. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleTimeUp = () => {
+    setTimeIsUp(true)
+    if (selectedAnswer && !hasSubmitted && currentQuestion) {
+      // Auto-submit if user selected but didn't submit
+      handleSubmit()
+    } else if (!selectedAnswer && currentQuestion) {
+      toast({
+        title: "Time's up!",
+        description: "You didn't select an answer in time.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -151,7 +188,12 @@ export default function GamePage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-arcane-navy p-4">
       <Card className="w-full max-w-md border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
         <CardContent className="p-6">
-          <h2 className="mb-4 text-xl font-semibold text-arcane-blue">{currentQuestion.question}</h2>
+          <div className="flex justify-between items-start mb-4">
+            <h2 className="text-xl font-semibold text-arcane-blue flex-1">{currentQuestion.question}</h2>
+            <div className="ml-4 flex-shrink-0">
+              <CountdownTimer duration={30} onTimeUp={handleTimeUp} isActive={timerActive} reset={timerReset} />
+            </div>
+          </div>
 
           {currentQuestion.type === "baby-picture" && currentQuestion.imageUrl && (
             <div className="mb-6 overflow-hidden rounded-lg">
@@ -168,7 +210,7 @@ export default function GamePage() {
               value={selectedAnswer}
               onValueChange={setSelectedAnswer}
               className="space-y-3"
-              disabled={hasSubmitted}
+              disabled={timeIsUp}
             >
               {currentQuestion.options.map((option, index) => (
                 <div
@@ -177,7 +219,7 @@ export default function GamePage() {
                     selectedAnswer === option
                       ? "border-arcane-blue bg-arcane-blue/10"
                       : "border-arcane-blue/20 bg-arcane-navy/50"
-                  }`}
+                  } ${timeIsUp ? "opacity-70" : ""}`}
                 >
                   <RadioGroupItem value={option} id={`option-${index}`} className="text-arcane-blue" />
                   <Label htmlFor={`option-${index}`} className="ml-2 cursor-pointer w-full text-arcane-gray-light">
@@ -190,11 +232,25 @@ export default function GamePage() {
 
           <Button
             onClick={handleSubmit}
-            disabled={!selectedAnswer || hasSubmitted}
-            className="w-full bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold"
+            disabled={!selectedAnswer || timeIsUp}
+            className={`w-full ${
+              hasSubmitted && !timeIsUp
+                ? "bg-arcane-gold hover:bg-arcane-gold/80 text-arcane-navy"
+                : "bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy"
+            } font-bold`}
           >
-            {hasSubmitted ? "Answer Submitted!" : "Submit Answer"}
+            {timeIsUp ? "Time's Up!" : hasSubmitted ? "Change Answer" : "Submit Answer"}
           </Button>
+
+          {hasSubmitted && !timeIsUp && (
+            <p className="text-center text-arcane-gold text-sm mt-2">
+              Answer submitted! You can change it until time runs out.
+            </p>
+          )}
+
+          {timeIsUp && (
+            <p className="text-center text-arcane-gray text-sm mt-2">Time's up! Waiting for the next question...</p>
+          )}
         </CardContent>
       </Card>
     </div>

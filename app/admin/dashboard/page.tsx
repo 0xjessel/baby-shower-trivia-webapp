@@ -5,16 +5,20 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { nextQuestion, showResults, resetGame, uploadQuestion } from "@/app/actions"
+import { nextQuestion, previousQuestion, showResults, resetGame, uploadQuestion } from "@/app/actions"
 import { toast } from "@/hooks/use-toast"
 import QuestionForm from "@/components/question-form"
 import QuestionList from "@/components/question-list"
 import GameStats from "@/components/game-stats"
+import { Clock, ChevronLeft, ChevronRight, Trophy } from "lucide-react"
 
 export default function AdminDashboardPage() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isActionInProgress, setIsActionInProgress] = useState(false)
+  const [currentQuestionId, setCurrentQuestionId] = useState<string | null>(null)
+  const [questions, setQuestions] = useState<any[]>([])
+  const [isLastQuestion, setIsLastQuestion] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -26,6 +30,8 @@ export default function AdminDashboardPage() {
           router.push("/admin")
         } else {
           setIsAdmin(true)
+          fetchGameState()
+          fetchQuestions()
         }
         setIsLoading(false)
       })
@@ -34,6 +40,48 @@ export default function AdminDashboardPage() {
         router.push("/admin")
       })
   }, [router])
+
+  // Fetch current game state to get current question
+  const fetchGameState = async () => {
+    try {
+      const response = await fetch("/api/game-state")
+      const data = await response.json()
+
+      if (data.currentQuestionId) {
+        setCurrentQuestionId(data.currentQuestionId)
+      }
+    } catch (error) {
+      console.error("Error fetching game state:", error)
+    }
+  }
+
+  // Fetch questions to determine if we're on the last question
+  const fetchQuestions = async () => {
+    try {
+      const response = await fetch("/api/questions")
+      const data = await response.json()
+
+      if (data.questions) {
+        setQuestions(data.questions)
+
+        // Check if current question is the last one
+        if (currentQuestionId && data.questions.length > 0) {
+          const currentIndex = data.questions.findIndex((q: any) => q.id === currentQuestionId)
+          setIsLastQuestion(currentIndex === data.questions.length - 1)
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching questions:", error)
+    }
+  }
+
+  // Update state after any question change
+  useEffect(() => {
+    if (questions.length > 0 && currentQuestionId) {
+      const currentIndex = questions.findIndex((q) => q.id === currentQuestionId)
+      setIsLastQuestion(currentIndex === questions.length - 1)
+    }
+  }, [questions, currentQuestionId])
 
   const handleNextQuestion = async () => {
     if (isActionInProgress) return
@@ -44,8 +92,11 @@ export default function AdminDashboardPage() {
       if (result.success) {
         toast({
           title: "Success",
-          description: "Advanced to the next question",
+          description: "Advanced to the next question. Players have 30 seconds to answer.",
         })
+        // Refresh game state and questions
+        await fetchGameState()
+        await fetchQuestions()
       } else {
         toast({
           title: "Error",
@@ -58,6 +109,39 @@ export default function AdminDashboardPage() {
       toast({
         title: "Error",
         description: "Failed to advance to next question. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsActionInProgress(false)
+    }
+  }
+
+  const handlePreviousQuestion = async () => {
+    if (isActionInProgress) return
+
+    setIsActionInProgress(true)
+    try {
+      const result = await previousQuestion()
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Went back to the previous question. Players have 30 seconds to answer.",
+        })
+        // Refresh game state and questions
+        await fetchGameState()
+        await fetchQuestions()
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to go back to previous question",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Failed to go back to previous question:", error)
+      toast({
+        title: "Error",
+        description: "Failed to go back to previous question. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -107,6 +191,8 @@ export default function AdminDashboardPage() {
             title: "Success",
             description: "Game has been reset",
           })
+          setCurrentQuestionId(null)
+          setIsLastQuestion(false)
         } else {
           toast({
             title: "Error",
@@ -157,20 +243,52 @@ export default function AdminDashboardPage() {
             </CardHeader>
             <CardContent className="flex flex-wrap gap-3">
               <Button
-                onClick={handleNextQuestion}
-                className="bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold"
-                disabled={isActionInProgress}
+                onClick={handlePreviousQuestion}
+                className="bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold flex items-center gap-2"
+                disabled={isActionInProgress || !currentQuestionId}
               >
-                {isActionInProgress ? "Processing..." : "Next Question"}
+                {isActionInProgress ? (
+                  "Processing..."
+                ) : (
+                  <>
+                    <ChevronLeft className="h-4 w-4" />
+                    <span>Previous</span>
+                  </>
+                )}
               </Button>
+
+              <Button
+                onClick={handleNextQuestion}
+                className="bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold flex items-center gap-2"
+                disabled={isActionInProgress || isLastQuestion}
+              >
+                {isActionInProgress ? (
+                  "Processing..."
+                ) : (
+                  <>
+                    <Clock className="h-4 w-4" />
+                    <span>Next Question (30s)</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </>
+                )}
+              </Button>
+
               <Button
                 onClick={handleShowResults}
                 variant="outline"
-                className="border-arcane-gold text-arcane-gold hover:bg-arcane-gold/10 font-medium"
+                className="border-arcane-gold text-arcane-gold hover:bg-arcane-gold/20 hover:text-arcane-gold hover:border-arcane-gold font-medium flex items-center gap-2"
                 disabled={isActionInProgress}
               >
-                {isActionInProgress ? "Processing..." : "Show Results"}
+                {isActionInProgress ? (
+                  "Processing..."
+                ) : (
+                  <>
+                    <Trophy className="h-4 w-4" />
+                    <span>Show Results</span>
+                  </>
+                )}
               </Button>
+
               <Button onClick={handleResetGame} variant="destructive" className="ml-auto" disabled={isActionInProgress}>
                 {isActionInProgress ? "Processing..." : "Reset Game"}
               </Button>
@@ -202,7 +320,7 @@ export default function AdminDashboardPage() {
             <TabsContent value="questions">
               <Card className="border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
                 <CardContent className="pt-6">
-                  <QuestionList />
+                  <QuestionList currentQuestionId={currentQuestionId} />
                 </CardContent>
               </Card>
             </TabsContent>
