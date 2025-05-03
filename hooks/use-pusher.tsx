@@ -9,17 +9,20 @@ import { createPusherClient, GAME_CHANNEL } from "@/lib/pusher-client"
 type PusherContextType = {
   gameChannel: Channel | null
   isLoading: boolean
+  isConnected: boolean
 }
 
 const PusherContext = createContext<PusherContextType>({
   gameChannel: null,
   isLoading: true,
+  isConnected: false,
 })
 
 export function PusherProvider({ children }: { children: React.ReactNode }) {
   const [gameChannel, setGameChannel] = useState<Channel | null>(null)
   const [pusherClient, setPusherClient] = useState<PusherClient | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isConnected, setIsConnected] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -32,11 +35,13 @@ export function PusherProvider({ children }: { children: React.ReactNode }) {
           setPusherClient(client)
           const channel = client.subscribe(GAME_CHANNEL)
           setGameChannel(channel)
+          setIsConnected(true)
           setIsLoading(false)
         }
       } catch (error) {
         console.error("Error initializing Pusher:", error)
         if (isMounted) {
+          setIsConnected(false)
           setIsLoading(false)
         }
       }
@@ -53,7 +58,7 @@ export function PusherProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  return <PusherContext.Provider value={{ gameChannel, isLoading }}>{children}</PusherContext.Provider>
+  return <PusherContext.Provider value={{ gameChannel, isLoading, isConnected }}>{children}</PusherContext.Provider>
 }
 
 export function usePusher() {

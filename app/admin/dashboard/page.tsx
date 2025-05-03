@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { nextQuestion, showResults, resetGame, uploadQuestion } from "@/app/actions"
+import { toast } from "@/hooks/use-toast"
 import QuestionForm from "@/components/question-form"
 import QuestionList from "@/components/question-list"
 import GameStats from "@/components/game-stats"
@@ -13,6 +14,7 @@ import GameStats from "@/components/game-stats"
 export default function AdminDashboardPage() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [isActionInProgress, setIsActionInProgress] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -34,27 +36,93 @@ export default function AdminDashboardPage() {
   }, [router])
 
   const handleNextQuestion = async () => {
+    if (isActionInProgress) return
+
+    setIsActionInProgress(true)
     try {
-      await nextQuestion()
+      const result = await nextQuestion()
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Advanced to the next question",
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to advance to next question",
+          variant: "destructive",
+        })
+      }
     } catch (error) {
       console.error("Failed to advance to next question:", error)
+      toast({
+        title: "Error",
+        description: "Failed to advance to next question. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsActionInProgress(false)
     }
   }
 
   const handleShowResults = async () => {
+    if (isActionInProgress) return
+
+    setIsActionInProgress(true)
     try {
-      await showResults()
+      const result = await showResults()
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Results are now visible to all participants",
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to show results",
+          variant: "destructive",
+        })
+      }
     } catch (error) {
       console.error("Failed to show results:", error)
+      toast({
+        title: "Error",
+        description: "Failed to show results. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsActionInProgress(false)
     }
   }
 
   const handleResetGame = async () => {
+    if (isActionInProgress) return
+
     if (window.confirm("Are you sure you want to reset the game? This will clear all questions and results.")) {
+      setIsActionInProgress(true)
       try {
-        await resetGame()
+        const result = await resetGame()
+        if (result.success) {
+          toast({
+            title: "Success",
+            description: "Game has been reset",
+          })
+        } else {
+          toast({
+            title: "Error",
+            description: result.error || "Failed to reset game",
+            variant: "destructive",
+          })
+        }
       } catch (error) {
         console.error("Failed to reset game:", error)
+        toast({
+          title: "Error",
+          description: "Failed to reset game. Please try again.",
+          variant: "destructive",
+        })
+      } finally {
+        setIsActionInProgress(false)
       }
     }
   }
@@ -88,18 +156,23 @@ export default function AdminDashboardPage() {
               <CardTitle className="text-xl text-pink-600">Game Controls</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-3">
-              <Button onClick={handleNextQuestion} className="bg-pink-600 hover:bg-pink-700">
-                Next Question
+              <Button
+                onClick={handleNextQuestion}
+                className="bg-pink-600 hover:bg-pink-700"
+                disabled={isActionInProgress}
+              >
+                {isActionInProgress ? "Processing..." : "Next Question"}
               </Button>
               <Button
                 onClick={handleShowResults}
                 variant="outline"
                 className="border-pink-600 text-pink-600 hover:bg-pink-50"
+                disabled={isActionInProgress}
               >
-                Show Results
+                {isActionInProgress ? "Processing..." : "Show Results"}
               </Button>
-              <Button onClick={handleResetGame} variant="destructive" className="ml-auto">
-                Reset Game
+              <Button onClick={handleResetGame} variant="destructive" className="ml-auto" disabled={isActionInProgress}>
+                {isActionInProgress ? "Processing..." : "Reset Game"}
               </Button>
             </CardContent>
           </Card>

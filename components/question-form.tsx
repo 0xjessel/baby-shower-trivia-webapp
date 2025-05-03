@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { PlusCircle, X } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface QuestionFormProps {
   onSubmit: (formData: FormData) => Promise<{ success: boolean; error?: string }>
@@ -54,6 +55,9 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
     const form = e.currentTarget
     const formData = new FormData(form)
 
+    // Explicitly add the question type to the form data
+    formData.append("type", questionType)
+
     // Add options and correct answer to form data
     options.forEach((option, index) => {
       formData.append(`option_${index}`, option)
@@ -89,6 +93,7 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
             value={questionType}
             onValueChange={(value) => setQuestionType(value as "baby-picture" | "text")}
             className="mt-2 flex space-x-4"
+            name="question-type" // Add name attribute
           >
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="baby-picture" id="baby-picture" />
@@ -110,6 +115,7 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
           <div>
             <Label htmlFor="image">Baby Picture</Label>
             <Input id="image" name="image" type="file" accept="image/*" className="mt-1" required />
+            <p className="mt-1 text-xs text-gray-500">Maximum file size: 5MB. Supported formats: JPG, PNG, GIF.</p>
           </div>
         )}
 
@@ -123,41 +129,48 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
           </div>
 
           <div className="mt-2 space-y-3">
-            {options.map((option, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <RadioGroupItem
-                  value={index.toString()}
-                  id={`correct-${index}`}
-                  name="correctAnswer"
-                  checked={correctAnswer === index}
-                  onClick={() => setCorrectAnswer(index)}
-                  className="text-pink-600"
-                />
-                <Input
-                  value={option}
-                  onChange={(e) => handleOptionChange(index, e.target.value)}
-                  placeholder={`Option ${index + 1}`}
-                  required
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeOption(index)}
-                  disabled={options.length <= 2}
-                  className="h-8 w-8 text-gray-500"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
+            <RadioGroup
+              value={correctAnswer.toString()}
+              onValueChange={(value) => setCorrectAnswer(Number.parseInt(value))}
+              name="correctAnswer"
+            >
+              {options.map((option, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <RadioGroupItem value={index.toString()} id={`correct-${index}`} className="text-pink-600" />
+                  <Input
+                    value={option}
+                    onChange={(e) => handleOptionChange(index, e.target.value)}
+                    placeholder={`Option ${index + 1}`}
+                    required
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeOption(index)}
+                    disabled={options.length <= 2}
+                    className="h-8 w-8 text-gray-500"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </RadioGroup>
           </div>
         </div>
       </div>
 
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-      {success && <div className="rounded-md bg-green-50 p-3 text-sm text-green-600">Question added successfully!</div>}
+      {success && (
+        <Alert variant="default" className="bg-green-50 text-green-600 border-green-200">
+          <AlertDescription>Question added successfully!</AlertDescription>
+        </Alert>
+      )}
 
       <Button type="submit" className="w-full bg-pink-600 hover:bg-pink-700" disabled={isSubmitting}>
         {isSubmitting ? "Adding Question..." : "Add Question"}

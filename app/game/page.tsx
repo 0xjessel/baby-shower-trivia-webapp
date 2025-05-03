@@ -37,6 +37,13 @@ export default function GamePage() {
 
     // Fetch current question on initial load
     fetchCurrentQuestion()
+
+    // Set up polling as a fallback for real-time updates
+    const pollInterval = setInterval(() => {
+      fetchCurrentQuestion()
+    }, 5000) // Poll every 5 seconds
+
+    return () => clearInterval(pollInterval)
   }, [router])
 
   useEffect(() => {
@@ -73,7 +80,6 @@ export default function GamePage() {
   }, [gameChannel, router])
 
   const fetchCurrentQuestion = async () => {
-    setIsLoading(true)
     try {
       const res = await fetch("/api/current-question")
       const data = await res.json()
@@ -82,16 +88,19 @@ export default function GamePage() {
         setIsWaiting(true)
         setCurrentQuestion(null)
       } else if (data.question) {
-        setCurrentQuestion(data.question)
-        setIsWaiting(false)
+        // Only update if the question has changed
+        if (!currentQuestion || currentQuestion.id !== data.question.id) {
+          setCurrentQuestion(data.question)
+          setIsWaiting(false)
 
-        // If the user has already answered this question
-        if (data.answered && data.selectedAnswer) {
-          setSelectedAnswer(data.selectedAnswer)
-          setHasSubmitted(true)
-        } else {
-          setSelectedAnswer("")
-          setHasSubmitted(false)
+          // If the user has already answered this question
+          if (data.answered && data.selectedAnswer) {
+            setSelectedAnswer(data.selectedAnswer)
+            setHasSubmitted(true)
+          } else {
+            setSelectedAnswer("")
+            setHasSubmitted(false)
+          }
         }
       }
     } catch (err) {

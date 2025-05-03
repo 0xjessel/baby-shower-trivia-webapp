@@ -4,28 +4,48 @@ import { useEffect, useState } from "react"
 import { usePusher } from "@/hooks/use-pusher"
 
 export function PusherStatus() {
-  const { gameChannel, isLoading } = usePusher()
-  const [status, setStatus] = useState<"connecting" | "connected" | "error">("connecting")
+  const { gameChannel, isLoading, isConnected } = usePusher()
+  const [status, setStatus] = useState<"connecting" | "connected" | "error" | "preview">("connecting")
+  const [isPreview, setIsPreview] = useState(false)
 
   useEffect(() => {
-    if (isLoading) {
+    // Check if we're in a preview environment
+    const hostname = window.location.hostname
+    const isPreviewEnv = hostname === "localhost" || hostname.includes("vercel.app")
+    setIsPreview(isPreviewEnv)
+
+    if (isPreviewEnv) {
+      setStatus("preview")
+    } else if (isLoading) {
       setStatus("connecting")
-    } else if (gameChannel) {
+    } else if (isConnected) {
       setStatus("connected")
     } else {
       setStatus("error")
     }
-  }, [gameChannel, isLoading])
+  }, [gameChannel, isLoading, isConnected])
 
   return (
     <div className="fixed bottom-2 right-2 text-xs px-2 py-1 rounded-full flex items-center gap-1">
       <div
         className={`w-2 h-2 rounded-full ${
-          status === "connected" ? "bg-green-500" : status === "connecting" ? "bg-yellow-500" : "bg-red-500"
+          status === "connected"
+            ? "bg-green-500"
+            : status === "preview"
+              ? "bg-blue-500"
+              : status === "connecting"
+                ? "bg-yellow-500"
+                : "bg-red-500"
         }`}
       />
       <span className="text-gray-600">
-        {status === "connected" ? "Realtime connected" : status === "connecting" ? "Connecting..." : "Connection error"}
+        {status === "connected"
+          ? "Realtime connected"
+          : status === "preview"
+            ? "Preview mode (polling)"
+            : status === "connecting"
+              ? "Connecting..."
+              : "Connection error"}
       </span>
     </div>
   )

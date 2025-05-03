@@ -3,9 +3,9 @@
 import { cookies } from "next/headers"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
-import { v4 as uuidv4 } from "uuid"
 import { supabaseAdmin } from "@/lib/supabase"
 import { pusherServer, GAME_CHANNEL, EVENTS } from "@/lib/pusher-server"
+import { generateId } from "@/lib/utils"
 
 // Admin password - in a real app, store this securely
 const ADMIN_PASSWORD = "babyshower2023"
@@ -14,7 +14,7 @@ const ADMIN_PASSWORD = "babyshower2023"
 export async function joinGame(name: string) {
   try {
     // Create a new participant
-    const participantId = uuidv4()
+    const participantId = generateId()
 
     const { error } = await supabaseAdmin.from("participants").insert({
       id: participantId,
@@ -41,7 +41,7 @@ export async function joinGame(name: string) {
 // Admin login
 export async function adminLogin(password: string) {
   if (password === ADMIN_PASSWORD) {
-    const adminToken = uuidv4()
+    const adminToken = generateId()
 
     cookies().set("adminToken", adminToken, {
       httpOnly: true,
@@ -188,15 +188,20 @@ export async function nextQuestion() {
     if (detailsError) throw detailsError
 
     // Trigger Pusher event to notify all clients
-    await pusherServer.trigger(GAME_CHANNEL, EVENTS.QUESTION_UPDATE, {
-      question: {
-        id: questionDetails.id,
-        type: questionDetails.type,
-        question: questionDetails.question,
-        imageUrl: questionDetails.image_url,
-        options: questionDetails.options,
-      },
-    })
+    try {
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.QUESTION_UPDATE, {
+        question: {
+          id: questionDetails.id,
+          type: questionDetails.type,
+          question: questionDetails.question,
+          imageUrl: questionDetails.image_url,
+          options: questionDetails.options,
+        },
+      })
+    } catch (pusherError) {
+      console.error("Error triggering Pusher event:", pusherError)
+      // Continue execution even if Pusher fails
+    }
 
     return { success: true }
   } catch (error) {
@@ -220,7 +225,12 @@ export async function showResults() {
     if (error) throw error
 
     // Trigger Pusher event to notify all clients
-    await pusherServer.trigger(GAME_CHANNEL, EVENTS.SHOW_RESULTS, {})
+    try {
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.SHOW_RESULTS, {})
+    } catch (pusherError) {
+      console.error("Error triggering Pusher event:", pusherError)
+      // Continue execution even if Pusher fails
+    }
 
     return { success: true }
   } catch (error) {
@@ -250,12 +260,17 @@ export async function resetGame() {
     if (gameError) throw gameError
 
     // Clear all answers
-    const { error: answersError } = await supabaseAdmin.from("answers").delete().neq("id", "0") // Delete all answers
+    const { error: answersError } = await supabaseAdmin.from("answers").delete()
 
     if (answersError) throw answersError
 
     // Trigger Pusher event to notify all clients
-    await pusherServer.trigger(GAME_CHANNEL, EVENTS.GAME_RESET, {})
+    try {
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.GAME_RESET, {})
+    } catch (pusherError) {
+      console.error("Error triggering Pusher event:", pusherError)
+      // Continue execution even if Pusher fails
+    }
 
     revalidatePath("/admin/dashboard")
 
@@ -275,7 +290,13 @@ export async function uploadQuestion(formData: FormData) {
   }
 
   try {
-    const questionType = formData.get("question-type") as "baby-picture" | "text"
+    // Get the question type from the form data
+    const questionType = formData.get("type") as "baby-picture" | "text"
+
+    if (!questionType) {
+      return { success: false, error: "Question type is required" }
+    }
+
     const questionText = formData.get("question") as string
 
     if (!questionText) {
@@ -311,8 +332,29 @@ export async function uploadQuestion(formData: FormData) {
         return { success: false, error: "Image is required for baby picture questions" }
       }
 
+      // Check if the bucket exists and create it if it doesn't
+      const { data: buckets } = await supabaseAdmin.storage.listBuckets()
+      const bucketExists = buckets?.some((bucket) => bucket.name === "baby-pictures")
+
+      if (!bucketExists) {
+        // Create the bucket
+        const { error: createBucketError } = await supabaseAdmin.storage.createBucket("baby-pictures", {
+          public: true, // Make the bucket public so we can access the images
+          fileSizeLimit: 1024 * 1024 * 5, // 5MB limit
+        })
+
+        if (createBucketError) {
+          console.error("Error creating bucket:", createBucketError)
+          return {
+            success: false,
+            error:
+              "Failed to create storage bucket. Please contact the administrator to set up the storage bucket in Supabase.",
+          }
+        }
+      }
+
       // Upload image to Supabase Storage
-      const fileName = `${uuidv4()}-${image.name.replace(/\s+/g, "-").toLowerCase()}`
+      const fileName = `${generateId()}-${image.name.replace(/\s+/g, "-").toLowerCase()}`
 
       const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
         .from("baby-pictures")
@@ -321,7 +363,10 @@ export async function uploadQuestion(formData: FormData) {
           upsert: false,
         })
 
-      if (uploadError) throw uploadError
+      if (uploadError) {
+        console.error("Error uploading image:", uploadError)
+        return { success: false, error: "Failed to upload image. Please try again." }
+      }
 
       // Get public URL for the uploaded image
       const { data: urlData } = supabaseAdmin.storage.from("baby-pictures").getPublicUrl(fileName)
@@ -330,7 +375,7 @@ export async function uploadQuestion(formData: FormData) {
     }
 
     // Insert the question into the database
-    const questionId = uuidv4()
+    const questionId = generateId()
 
     const { error } = await supabaseAdmin.from("questions").insert({
       id: questionId,

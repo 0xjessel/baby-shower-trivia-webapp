@@ -33,6 +33,13 @@ export default function ResultsPage() {
     }
 
     fetchResults()
+
+    // Set up polling as a fallback for real-time updates
+    const pollInterval = setInterval(() => {
+      fetchResults()
+    }, 5000) // Poll every 5 seconds
+
+    return () => clearInterval(pollInterval)
   }, [router])
 
   useEffect(() => {
@@ -57,7 +64,6 @@ export default function ResultsPage() {
   }, [gameChannel, router])
 
   const fetchResults = async () => {
-    setIsLoading(true)
     try {
       const res = await fetch("/api/results")
       const data = await res.json()

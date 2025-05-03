@@ -2,6 +2,7 @@ import type React from "react"
 import "@/app/globals.css"
 import { PusherProvider } from "@/hooks/use-pusher"
 import { PusherStatus } from "@/components/pusher-status"
+import { ToastContainer } from "@/components/toast"
 
 export default function RootLayout({
   children,
@@ -20,6 +21,7 @@ export default function RootLayout({
         <PusherProvider>
           {children}
           <PusherStatus />
+          <ToastContainer />
         </PusherProvider>
       </body>
     </html>

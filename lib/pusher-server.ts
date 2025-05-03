@@ -1,14 +1,5 @@
 import Pusher from "pusher"
 
-// Server-side Pusher client (only used in server components and server actions)
-export const pusherServer = new Pusher({
-  appId: process.env.PUSHER_APP_ID!,
-  key: process.env.PUSHER_KEY!,
-  secret: process.env.PUSHER_SECRET!,
-  cluster: process.env.PUSHER_CLUSTER!,
-  useTLS: true,
-})
-
 // Channel names
 export const GAME_CHANNEL = "game-channel"
 
@@ -18,3 +9,25 @@ export const EVENTS = {
   SHOW_RESULTS: "show-results",
   GAME_RESET: "game-reset",
 }
+
+// Check if we're in a development/preview environment
+const isPreviewEnv = process.env.VERCEL_ENV === "preview" || process.env.NODE_ENV === "development"
+
+// Create a mock Pusher implementation for preview environments
+class MockPusher {
+  async trigger(channel: string, event: string, data: any) {
+    console.log(`[MockPusher] Would trigger event "${event}" on channel "${channel}" with data:`, data)
+    return Promise.resolve({ success: true })
+  }
+}
+
+// Use the mock implementation in preview environments, real Pusher otherwise
+export const pusherServer = isPreviewEnv
+  ? (new MockPusher() as unknown as Pusher)
+  : new Pusher({
+      appId: process.env.PUSHER_APP_ID!,
+      key: process.env.PUSHER_KEY!,
+      secret: process.env.PUSHER_SECRET!,
+      cluster: process.env.PUSHER_CLUSTER!,
+      useTLS: true,
+    })
