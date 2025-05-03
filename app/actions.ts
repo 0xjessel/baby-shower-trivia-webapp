@@ -124,6 +124,35 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
   }
 }
 
+// Update vote count in real-time without submitting an answer
+export async function updateVoteCount(questionId: string, selectedAnswer: string, previousAnswer: string | null) {
+  const participantId = cookies().get("participantId")?.value
+
+  if (!participantId) {
+    redirect("/join")
+  }
+
+  try {
+    // Get vote counts for the question
+    const { data: voteData, error: voteError } = await getVoteCounts(questionId)
+
+    if (voteError) throw voteError
+
+    // Broadcast vote update via Pusher
+    try {
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.VOTE_UPDATE, voteData)
+    } catch (pusherError) {
+      console.error("Error triggering Pusher vote update event:", pusherError)
+      // Continue execution even if Pusher fails
+    }
+
+    return { success: true }
+  } catch (error) {
+    console.error("Error updating vote count:", error)
+    return { success: false, error: "Failed to update vote count" }
+  }
+}
+
 // Submit answer for a question
 export async function submitAnswer(questionId: string, answerText: string) {
   const participantId = cookies().get("participantId")?.value

@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { submitAnswer, addCustomAnswer } from "@/app/actions"
+import { submitAnswer, addCustomAnswer, updateVoteCount } from "@/app/actions"
 import { usePusher } from "@/hooks/use-pusher"
 import { EVENTS } from "@/lib/pusher-client"
 import CountdownTimer from "@/components/countdown-timer"
@@ -50,6 +50,7 @@ export default function GamePage() {
   const playerName = useRef<string>("")
   const router = useRouter()
   const { gameChannel, isLoading: isPusherLoading } = usePusher()
+  const previousAnswerRef = useRef<string | null>(null)
 
   // Memoize the fetchCurrentQuestion function to avoid recreating it on every render
   const fetchCurrentQuestion = useCallback(async () => {
@@ -83,10 +84,12 @@ export default function GamePage() {
           if (data.answered && data.selectedAnswer) {
             setSelectedAnswer(data.selectedAnswer)
             setSubmittedAnswer(data.selectedAnswer)
+            previousAnswerRef.current = data.selectedAnswer
             setHasSubmitted(true)
           } else {
             setSelectedAnswer("")
             setSubmittedAnswer("")
+            previousAnswerRef.current = null
             setHasSubmitted(false)
           }
 
@@ -162,6 +165,7 @@ export default function GamePage() {
       setCurrentQuestion(data.question)
       setSelectedAnswer("")
       setSubmittedAnswer("")
+      previousAnswerRef.current = null
       setHasSubmitted(false)
       setIsLoading(false)
       setIsWaiting(false)
@@ -206,6 +210,7 @@ export default function GamePage() {
       setCurrentQuestion(null)
       setSelectedAnswer("")
       setSubmittedAnswer("")
+      previousAnswerRef.current = null
       setHasSubmitted(false)
       setIsWaiting(true)
       setTimerActive(false)
@@ -225,31 +230,25 @@ export default function GamePage() {
     }
   }, [gameChannel, router])
 
-  const handleAnswerChange = (value: string) => {
-    // If changing from a previously selected answer, decrement that count
-    if (selectedAnswer && selectedAnswer !== value) {
-      setVoteCounts((prev) => ({
-        ...prev,
-        [selectedAnswer]: Math.max(0, (prev[selectedAnswer] || 0) - 1),
-      }))
-    }
+  const handleAnswerChange = async (value: string) => {
+    if (!currentQuestion) return
 
-    // Increment the count for the newly selected answer
-    setVoteCounts((prev) => ({
-      ...prev,
-      [value]: (prev[value] || 0) + 1,
-    }))
+    const previousAnswer = previousAnswerRef.current
 
-    // Update total votes if this is a new selection
-    if (!selectedAnswer) {
-      setTotalVotes((prev) => prev + 1)
-    }
-
+    // Update the selected answer locally
     setSelectedAnswer(value)
+    previousAnswerRef.current = value
 
     // If already submitted and user selects a different answer, allow resubmission
     if (hasSubmitted && !timeIsUp && value !== submittedAnswer) {
       setHasSubmitted(false)
+    }
+
+    // Update vote counts in real-time for all users
+    try {
+      await updateVoteCount(currentQuestion.id, value, previousAnswer)
+    } catch (error) {
+      console.error("Failed to update vote count:", error)
     }
   }
 
@@ -263,8 +262,6 @@ export default function GamePage() {
       toast({
         title: "Answer submitted!",
       })
-
-      // We don't need to update vote counts here anymore as we're doing it in handleAnswerChange
     } catch (error) {
       console.error("Failed to submit answer:", error)
       toast({
@@ -289,8 +286,6 @@ export default function GamePage() {
     }
   }
 
-  // Update the handleAddCustomAnswer function to automatically select and submit the custom answer after it's added
-
   const handleAddCustomAnswer = async () => {
     if (!newCustomAnswer.trim() || !currentQuestion) return
 
@@ -312,15 +307,7 @@ export default function GamePage() {
 
         // Set the newly added answer as the selected answer
         setSelectedAnswer(newCustomAnswerObj.text)
-
-        // Update vote counts to include the new custom answer with 1 vote
-        setVoteCounts((prev) => ({
-          ...prev,
-          [newCustomAnswerObj.text]: 1,
-        }))
-
-        // Update total votes
-        setTotalVotes((prev) => prev + 1)
+        previousAnswerRef.current = newCustomAnswerObj.text
 
         // Submit the answer automatically
         await submitAnswer(currentQuestion.id, newCustomAnswerObj.text)
