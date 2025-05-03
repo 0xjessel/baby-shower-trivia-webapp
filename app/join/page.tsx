@@ -10,6 +10,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { joinGame } from "@/app/actions"
 
+// Add this export to disable static generation for this page
+export const dynamic = "force-dynamic"
+
 export default function JoinPage() {
   const [name, setName] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)

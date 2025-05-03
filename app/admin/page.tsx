@@ -10,6 +10,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { adminLogin } from "@/app/actions"
 
+// Add this export to disable static generation for this page
+export const dynamic = "force-dynamic"
+
 export default function AdminLoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")

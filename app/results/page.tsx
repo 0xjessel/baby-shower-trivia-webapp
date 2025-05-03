@@ -7,6 +7,9 @@ import { useRouter } from "next/navigation"
 import { usePusher } from "@/hooks/use-pusher"
 import { EVENTS } from "@/lib/pusher-client"
 
+// Add this export to disable static generation for this page
+export const dynamic = "force-dynamic"
+
 interface ResultItem {
   questionId: string
   question: string
@@ -25,6 +28,9 @@ export default function ResultsPage() {
   const { gameChannel, isLoading: isPusherLoading } = usePusher()
 
   useEffect(() => {
+    // Ensure this code only runs in the browser
+    if (typeof window === "undefined") return
+
     // Check if user is authenticated
     const playerName = localStorage.getItem("playerName")
     if (!playerName) {
@@ -43,7 +49,8 @@ export default function ResultsPage() {
   }, [router])
 
   useEffect(() => {
-    if (!gameChannel) return
+    // Ensure this code only runs in the browser
+    if (typeof window === "undefined" || !gameChannel) return
 
     // Set up Pusher event listeners
     // Listen for question updates - go back to game if a new question is shown

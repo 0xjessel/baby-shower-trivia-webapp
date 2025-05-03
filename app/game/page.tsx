@@ -14,6 +14,9 @@ import CountdownTimer from "@/components/countdown-timer"
 import { toast } from "@/hooks/use-toast"
 import { Users, Send } from "lucide-react"
 
+// Add this export to disable static generation for this page
+export const dynamic = "force-dynamic"
+
 interface Question {
   id: string
   type: "baby-picture" | "text"
@@ -41,7 +44,7 @@ export default function GamePage() {
   const [isWaiting, setIsWaiting] = useState(true)
   const [timerActive, setTimerActive] = useState(false)
   const [timerReset, setTimerReset] = useState(0)
-  const [timeIsUp, setTimeIsUp] = useState(timeIsUp)
+  const [timeIsUp, setTimeIsUp] = useState(false)
   const [voteCounts, setVoteCounts] = useState<VoteCounts>({})
   const [totalVotes, setTotalVotes] = useState(0)
   const [customAnswers, setCustomAnswers] = useState<CustomAnswer[]>([])
@@ -138,6 +141,9 @@ export default function GamePage() {
   }
 
   useEffect(() => {
+    // Ensure this code only runs in the browser
+    if (typeof window === "undefined") return
+
     // Check if user is authenticated
     const name = localStorage.getItem("playerName")
     if (!name) {
@@ -159,7 +165,8 @@ export default function GamePage() {
   }, [router, fetchCurrentQuestion])
 
   useEffect(() => {
-    if (!gameChannel) return
+    // Ensure this code only runs in the browser
+    if (typeof window === "undefined" || !gameChannel) return
 
     // Set up Pusher event listeners
     gameChannel.bind(EVENTS.QUESTION_UPDATE, (data: { question: Question }) => {
