@@ -42,10 +42,10 @@ export default function GamePage() {
   const [submittedAnswer, setSubmittedAnswer] = useState<string>("")
   const [hasSubmitted, setHasSubmitted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [isWaiting, setIsWaiting] = useState(true)
+  const [isWaiting, setIsWaiting] = useState(isWaiting)
   const [timerActive, setTimerActive] = useState(false)
   const [timerReset, setTimerReset] = useState(0)
-  const [timeIsUp, setTimeIsUp] = useState(timeIsUp)
+  const [timeIsUp, setTimeIsUp] = useState(false) // Fixed: Changed from timeIsUp to false
   const [voteCounts, setVoteCounts] = useState<VoteCounts>({})
   const [totalVotes, setTotalVotes] = useState(0)
   const [customAnswers, setCustomAnswers] = useState<CustomAnswer[]>([])
