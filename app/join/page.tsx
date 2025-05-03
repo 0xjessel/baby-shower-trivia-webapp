@@ -42,36 +42,48 @@ export default function JoinPage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-arcane-navy p-4">
-      <Card className="w-full max-w-md border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-arcane-blue">Join Baby Jayce's League Challenge!</CardTitle>
-          <CardDescription className="text-arcane-gray">Enter your name to get started</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="name" className="text-arcane-gray-light">
-                Your Name
-              </Label>
-              <Input
-                id="name"
-                placeholder="Enter your name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="border-arcane-blue/30 bg-arcane-navy/50 text-arcane-gray-light focus:border-arcane-blue focus:ring-arcane-blue"
-                required
-              />
-            </div>
-            <Button
-              type="submit"
-              className="w-full bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? "Joining..." : "Join Game"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+      <div className="w-full max-w-md space-y-6">
+        <div className="text-center">
+          <div className="mb-6 rounded-lg overflow-hidden shadow-lg border-2 border-arcane-gold/50">
+            <img
+              src="/images/hero-banner.png"
+              alt="Future of Piltover: Baby Jayce's League Challenge"
+              className="w-full h-auto"
+            />
+          </div>
+        </div>
+
+        <Card className="w-full max-w-md border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl font-bold text-arcane-blue">Join Baby Jayce's League Challenge!</CardTitle>
+            <CardDescription className="text-arcane-gray">Enter your name to get started</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="name" className="text-arcane-gray-light">
+                  Your Name
+                </Label>
+                <Input
+                  id="name"
+                  placeholder="Enter your name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="border-arcane-blue/30 bg-arcane-navy/50 text-arcane-gray-light focus:border-arcane-blue focus:ring-arcane-blue"
+                  required
+                />
+              </div>
+              <Button
+                type="submit"
+                className="w-full bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Joining..." : "Join Game"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

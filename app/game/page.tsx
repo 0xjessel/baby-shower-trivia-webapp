@@ -561,13 +561,15 @@ export default function GamePage() {
     if (selectedAnswer && !hasSubmitted && currentQuestion) {
       // Auto-submit if user selected but didn't submit
       handleSubmit()
-    } else if (!selectedAnswer && currentQuestion) {
+    } else if (!selectedAnswer && !hasSubmitted && currentQuestion) {
+      // Only show the "didn't select" toast if they haven't submitted anything
       toast({
         title: "Time's up!",
         description: "You didn't select an answer in time.",
         variant: "destructive",
       })
     }
+    // If they've already submitted, don't show any toast
   }
 
   const handleAddCustomAnswer = async () => {
