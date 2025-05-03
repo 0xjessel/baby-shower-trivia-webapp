@@ -51,6 +51,7 @@ export default function GamePage() {
   const router = useRouter()
   const { gameChannel, isLoading: isPusherLoading } = usePusher()
   const previousAnswerRef = useRef<string | null>(null)
+  const isUpdatingVoteRef = useRef(false)
 
   // Memoize the fetchCurrentQuestion function to avoid recreating it on every render
   const fetchCurrentQuestion = useCallback(async () => {
@@ -185,6 +186,7 @@ export default function GamePage() {
 
     // Listen for vote updates
     gameChannel.bind(EVENTS.VOTE_UPDATE, (data: { voteCounts: VoteCounts; totalVotes: number }) => {
+      console.log("Received vote update:", data)
       setVoteCounts(data.voteCounts)
       setTotalVotes(data.totalVotes)
     })
@@ -202,6 +204,7 @@ export default function GamePage() {
 
     // Listen for results announcement
     gameChannel.bind(EVENTS.SHOW_RESULTS, () => {
+      console.log("Received SHOW_RESULTS event, redirecting to results page")
       router.push("/results")
     })
 
@@ -235,8 +238,30 @@ export default function GamePage() {
 
     const previousAnswer = previousAnswerRef.current
 
-    // Update the selected answer locally
+    // Optimistically update the UI
     setSelectedAnswer(value)
+
+    // Update vote counts optimistically
+    setVoteCounts((prev) => {
+      const newCounts = { ...prev }
+
+      // If changing from a previously selected answer, decrement that count
+      if (previousAnswer && previousAnswer !== value) {
+        newCounts[previousAnswer] = Math.max(0, (prev[previousAnswer] || 0) - 1)
+      }
+
+      // Increment the count for the newly selected answer
+      newCounts[value] = (prev[value] || 0) + 1
+
+      return newCounts
+    })
+
+    // Update total votes if this is a new selection
+    if (!previousAnswer) {
+      setTotalVotes((prev) => prev + 1)
+    }
+
+    // Store the new answer as the previous answer for next time
     previousAnswerRef.current = value
 
     // If already submitted and user selects a different answer, allow resubmission
@@ -244,11 +269,20 @@ export default function GamePage() {
       setHasSubmitted(false)
     }
 
-    // Update vote counts in real-time for all users
+    // Prevent multiple simultaneous vote updates
+    if (isUpdatingVoteRef.current) return
+
+    isUpdatingVoteRef.current = true
+
     try {
+      // Send the update to the server
       await updateVoteCount(currentQuestion.id, value, previousAnswer)
     } catch (error) {
       console.error("Failed to update vote count:", error)
+      // If the server update fails, we could revert the optimistic update here
+      // but for simplicity, we'll leave it as is since the next poll will sync
+    } finally {
+      isUpdatingVoteRef.current = false
     }
   }
 
@@ -256,14 +290,22 @@ export default function GamePage() {
     if (!selectedAnswer || !currentQuestion) return
 
     try {
-      await submitAnswer(currentQuestion.id, selectedAnswer)
+      // Optimistically update UI
       setSubmittedAnswer(selectedAnswer)
       setHasSubmitted(true)
+
+      // Send to server
+      await submitAnswer(currentQuestion.id, selectedAnswer)
+
       toast({
         title: "Answer submitted!",
       })
     } catch (error) {
       console.error("Failed to submit answer:", error)
+
+      // Revert optimistic update on error
+      setHasSubmitted(false)
+
       toast({
         title: "Error",
         description: "Failed to submit your answer. Please try again.",
@@ -308,6 +350,15 @@ export default function GamePage() {
         // Set the newly added answer as the selected answer
         setSelectedAnswer(newCustomAnswerObj.text)
         previousAnswerRef.current = newCustomAnswerObj.text
+
+        // Update vote counts optimistically
+        setVoteCounts((prev) => ({
+          ...prev,
+          [newCustomAnswerObj.text]: 1,
+        }))
+
+        // Update total votes
+        setTotalVotes((prev) => prev + 1)
 
         // Submit the answer automatically
         await submitAnswer(currentQuestion.id, newCustomAnswerObj.text)

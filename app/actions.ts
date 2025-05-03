@@ -8,7 +8,7 @@ import { pusherServer, GAME_CHANNEL, EVENTS } from "@/lib/pusher-server"
 import { generateId, generateUUID } from "@/lib/utils"
 
 // Admin password - in a real app, store this securely
-const ADMIN_PASSWORD = "babyshower2023"
+const ADMIN_PASSWORD = "babyjayce"
 
 // Join game as a participant
 export async function joinGame(name: string) {
@@ -133,10 +133,15 @@ export async function updateVoteCount(questionId: string, selectedAnswer: string
   }
 
   try {
+    // We don't need to update the database here since this is just for real-time UI updates
+    // The actual answer will be saved when the user submits
+
     // Get vote counts for the question
     const { data: voteData, error: voteError } = await getVoteCounts(questionId)
 
     if (voteError) throw voteError
+
+    console.log("Broadcasting vote counts:", voteData)
 
     // Broadcast vote update via Pusher
     try {
@@ -520,11 +525,29 @@ export async function showResults() {
     // Update game status to show results
     const { error } = await supabaseAdmin.from("games").update({ status: "results" }).eq("id", "current")
 
-    if (error) throw error
+    if (error) {
+      console.error("Database error when updating game status:", error)
+      throw error
+    }
+
+    // Verify the update was successful
+    const { data: game, error: verifyError } = await supabaseAdmin
+      .from("games")
+      .select("status")
+      .eq("id", "current")
+      .single()
+
+    if (verifyError) {
+      console.error("Error verifying game status update:", verifyError)
+      throw verifyError
+    }
+
+    console.log("Game status updated to:", game.status)
 
     // Trigger Pusher event to notify all clients
     try {
       await pusherServer.trigger(GAME_CHANNEL, EVENTS.SHOW_RESULTS, {})
+      console.log("SHOW_RESULTS event triggered successfully")
     } catch (pusherError) {
       console.error("Error triggering Pusher event:", pusherError)
       // Continue execution even if Pusher fails

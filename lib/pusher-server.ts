@@ -33,3 +33,15 @@ export const pusherServer = isPreviewEnv
       cluster: process.env.PUSHER_CLUSTER!,
       useTLS: true,
     })
+
+// Helper function to safely trigger Pusher events with error handling
+export async function safeTrigger(channel: string, event: string, data: any) {
+  try {
+    console.log(`Triggering event "${event}" on channel "${channel}" with data:`, data)
+    await pusherServer.trigger(channel, event, data)
+    return { success: true }
+  } catch (error) {
+    console.error(`Error triggering Pusher event "${event}" on channel "${channel}":`, error)
+    return { success: false, error }
+  }
+}
