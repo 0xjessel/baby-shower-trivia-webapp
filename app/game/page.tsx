@@ -38,7 +38,7 @@ export default function GamePage() {
   const [submittedAnswer, setSubmittedAnswer] = useState<string>("")
   const [hasSubmitted, setHasSubmitted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [isWaiting, setIsWaiting] = useState(false)
+  const [isWaiting, setIsWaiting] = useState(true)
   const [timerActive, setTimerActive] = useState(false)
   const [timerReset, setTimerReset] = useState(0)
   const [timeIsUp, setTimeIsUp] = useState(false)
@@ -225,6 +225,34 @@ export default function GamePage() {
     }
   }, [gameChannel, router])
 
+  const handleAnswerChange = (value: string) => {
+    // If changing from a previously selected answer, decrement that count
+    if (selectedAnswer && selectedAnswer !== value) {
+      setVoteCounts((prev) => ({
+        ...prev,
+        [selectedAnswer]: Math.max(0, (prev[selectedAnswer] || 0) - 1),
+      }))
+    }
+
+    // Increment the count for the newly selected answer
+    setVoteCounts((prev) => ({
+      ...prev,
+      [value]: (prev[value] || 0) + 1,
+    }))
+
+    // Update total votes if this is a new selection
+    if (!selectedAnswer) {
+      setTotalVotes((prev) => prev + 1)
+    }
+
+    setSelectedAnswer(value)
+
+    // If already submitted and user selects a different answer, allow resubmission
+    if (hasSubmitted && !timeIsUp && value !== submittedAnswer) {
+      setHasSubmitted(false)
+    }
+  }
+
   const handleSubmit = async () => {
     if (!selectedAnswer || !currentQuestion) return
 
@@ -235,6 +263,8 @@ export default function GamePage() {
       toast({
         title: "Answer submitted!",
       })
+
+      // We don't need to update vote counts here anymore as we're doing it in handleAnswerChange
     } catch (error) {
       console.error("Failed to submit answer:", error)
       toast({
@@ -242,15 +272,6 @@ export default function GamePage() {
         description: "Failed to submit your answer. Please try again.",
         variant: "destructive",
       })
-    }
-  }
-
-  const handleAnswerChange = (value: string) => {
-    setSelectedAnswer(value)
-
-    // If already submitted and user selects a different answer, allow resubmission
-    if (hasSubmitted && !timeIsUp && value !== submittedAnswer) {
-      setHasSubmitted(false)
     }
   }
 
@@ -268,6 +289,8 @@ export default function GamePage() {
     }
   }
 
+  // Update the handleAddCustomAnswer function to automatically select and submit the custom answer after it's added
+
   const handleAddCustomAnswer = async () => {
     if (!newCustomAnswer.trim() || !currentQuestion) return
 
@@ -276,12 +299,33 @@ export default function GamePage() {
     try {
       const result = await addCustomAnswer(currentQuestion.id, newCustomAnswer.trim())
 
-      if (result.success) {
+      if (result.success && result.customAnswer) {
         setNewCustomAnswer("")
         toast({
           title: "Custom answer added!",
-          description: "Your answer is now available for everyone to vote on.",
+          description: "Your answer has been submitted.",
         })
+
+        // Add the custom answer to the local state immediately
+        const newCustomAnswerObj = result.customAnswer
+        setCustomAnswers((prev) => [...prev, newCustomAnswerObj])
+
+        // Set the newly added answer as the selected answer
+        setSelectedAnswer(newCustomAnswerObj.text)
+
+        // Update vote counts to include the new custom answer with 1 vote
+        setVoteCounts((prev) => ({
+          ...prev,
+          [newCustomAnswerObj.text]: 1,
+        }))
+
+        // Update total votes
+        setTotalVotes((prev) => prev + 1)
+
+        // Submit the answer automatically
+        await submitAnswer(currentQuestion.id, newCustomAnswerObj.text)
+        setSubmittedAnswer(newCustomAnswerObj.text)
+        setHasSubmitted(true)
       } else {
         toast({
           title: "Error",
@@ -369,7 +413,8 @@ export default function GamePage() {
                       selectedAnswer === option
                         ? "border-arcane-blue bg-arcane-blue/10"
                         : "border-arcane-blue/20 bg-arcane-navy/50"
-                    } ${timeIsUp ? "opacity-70" : ""}`}
+                    } ${timeIsUp ? "opacity-70" : ""} cursor-pointer`}
+                    onClick={() => !timeIsUp && handleAnswerChange(option)}
                   >
                     {/* Background progress bar */}
                     <div
@@ -378,8 +423,8 @@ export default function GamePage() {
                     />
 
                     <RadioGroupItem value={option} id={`option-${index}`} className="text-arcane-blue z-10" />
-                    <div className="ml-2 cursor-pointer w-full z-10">
-                      <Label htmlFor={`option-${index}`} className="text-arcane-gray-light">
+                    <div className="ml-2 w-full z-10">
+                      <Label htmlFor={`option-${index}`} className="text-arcane-gray-light cursor-pointer">
                         {option}
                       </Label>
 
@@ -408,7 +453,7 @@ export default function GamePage() {
                     placeholder="Add your own answer..."
                     value={newCustomAnswer}
                     onChange={(e) => setNewCustomAnswer(e.target.value)}
-                    className="border-none bg-transparent text-arcane-gray-light focus:ring-0 p-0 h-auto"
+                    className="border-none bg-transparent text-arcane-gray-light focus:ring-0 pl-8 h-auto"
                     disabled={isSubmittingCustom || timeIsUp}
                   />
                   <Button
