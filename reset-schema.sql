@@ -1,5 +1,11 @@
--- Create tables for the baby shower trivia game
+-- Drop existing tables (in reverse order of dependencies)
+DROP TABLE IF EXISTS answers;
+DROP TABLE IF EXISTS custom_answers;
+DROP TABLE IF EXISTS games;
+DROP TABLE IF EXISTS participants;
+DROP TABLE IF EXISTS questions;
 
+-- Create tables with the new schema
 -- Questions table
 CREATE TABLE questions (
   id UUID PRIMARY KEY,
@@ -49,5 +55,5 @@ CREATE TABLE games (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create storage bucket for baby pictures
--- Note: This needs to be done in the Supabase dashboard or using the Supabase CLI
+-- Insert initial game state
+INSERT INTO games (id, status) VALUES ('current', 'waiting');

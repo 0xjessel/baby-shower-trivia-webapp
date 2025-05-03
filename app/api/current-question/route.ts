@@ -47,10 +47,21 @@ export async function GET() {
       throw questionError
     }
 
+    // Get all answer options for this question (including custom ones)
+    const { data: answerOptions, error: optionsError } = await supabaseAdmin
+      .from("answer_options")
+      .select("id, text, is_custom, added_by_name")
+      .eq("question_id", question.id)
+      .order("created_at", { ascending: true })
+
+    if (optionsError) {
+      throw optionsError
+    }
+
     // Check if the participant has already answered this question
     const { data: answer, error: answerError } = await supabaseAdmin
       .from("answers")
-      .select("answer")
+      .select("answer_option_id")
       .eq("participant_id", participantId)
       .eq("question_id", question.id)
       .maybeSingle()
@@ -59,16 +70,43 @@ export async function GET() {
       throw answerError
     }
 
+    // Get the selected answer text if the participant has answered
+    let selectedAnswer = null
+    if (answer) {
+      const { data: selectedOption, error: selectedError } = await supabaseAdmin
+        .from("answer_options")
+        .select("text")
+        .eq("id", answer.answer_option_id)
+        .single()
+
+      if (!selectedError && selectedOption) {
+        selectedAnswer = selectedOption.text
+      }
+    }
+
+    // Format custom answers for the frontend
+    const customAnswers = answerOptions
+      .filter((option) => option.is_custom)
+      .map((option) => ({
+        id: option.id,
+        text: option.text,
+        addedBy: option.added_by_name,
+      }))
+
+    // Get all options (predefined + custom)
+    const allOptions = answerOptions.map((option) => option.text)
+
     return NextResponse.json({
       question: {
         id: question.id,
         type: question.type,
         question: question.question,
         imageUrl: question.image_url,
-        options: question.options,
+        options: allOptions,
       },
+      customAnswers,
       answered: answer ? true : false,
-      selectedAnswer: answer ? answer.answer : null,
+      selectedAnswer,
     })
   } catch (error) {
     console.error("Error fetching current question:", error)

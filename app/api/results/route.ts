@@ -37,19 +37,14 @@ export async function GET() {
       return NextResponse.json({ waiting: true })
     }
 
-    // Get all questions with answers from this participant
+    // Get all answers from this participant
     const { data: answers, error: answersError } = await supabaseAdmin
       .from("answers")
       .select(`
-        id,
-        answer,
-        is_correct,
-        questions (
-          id,
-          question,
-          image_url,
-          correct_answer
-        )
+        id, 
+        question_id, 
+        answer_option_id, 
+        is_correct
       `)
       .eq("participant_id", participantId)
 
@@ -58,16 +53,47 @@ export async function GET() {
     }
 
     // Format the results for the frontend
-    const results = answers.map((a) => ({
-      questionId: a.questions.id,
-      question: a.questions.question,
-      imageUrl: a.questions.image_url,
-      correctAnswer: a.questions.correct_answer,
-      yourAnswer: a.answer,
-      isCorrect: a.is_correct,
-    }))
+    const results = await Promise.all(
+      answers.map(async (a) => {
+        // Get the question details
+        const { data: question, error: questionError } = await supabaseAdmin
+          .from("questions")
+          .select("id, question, image_url, correct_answer")
+          .eq("id", a.question_id)
+          .single()
 
-    return NextResponse.json({ results })
+        if (questionError) {
+          console.error("Error fetching question:", questionError)
+          return null
+        }
+
+        // Get the answer option text
+        const { data: answerOption, error: optionError } = await supabaseAdmin
+          .from("answer_options")
+          .select("text")
+          .eq("id", a.answer_option_id)
+          .single()
+
+        if (optionError) {
+          console.error("Error fetching answer option:", optionError)
+          return null
+        }
+
+        return {
+          questionId: question.id,
+          question: question.question,
+          imageUrl: question.image_url,
+          correctAnswer: question.correct_answer,
+          yourAnswer: answerOption.text,
+          isCorrect: a.is_correct,
+        }
+      }),
+    )
+
+    // Filter out any null results
+    const validResults = results.filter((r) => r !== null)
+
+    return NextResponse.json({ results: validResults })
   } catch (error) {
     console.error("Error fetching results:", error)
     return NextResponse.json({ error: "Failed to fetch results" }, { status: 500 })

@@ -56,8 +56,8 @@ export async function adminLogin(password: string) {
   return { success: false, error: "Invalid password" }
 }
 
-// Submit answer for a question
-export async function submitAnswer(questionId: string, answer: string) {
+// Add a custom answer
+export async function addCustomAnswer(questionId: string, answerText: string) {
   const participantId = cookies().get("participantId")?.value
 
   if (!participantId) {
@@ -65,6 +65,86 @@ export async function submitAnswer(questionId: string, answer: string) {
   }
 
   try {
+    // Get participant name
+    const { data: participant, error: participantError } = await supabaseAdmin
+      .from("participants")
+      .select("name")
+      .eq("id", participantId)
+      .single()
+
+    if (participantError) throw participantError
+
+    // Check if this answer already exists
+    const { data: existingOption, error: optionError } = await supabaseAdmin
+      .from("answer_options")
+      .select("id")
+      .eq("question_id", questionId)
+      .eq("text", answerText)
+      .maybeSingle()
+
+    if (optionError) throw optionError
+
+    if (existingOption) {
+      return { success: false, error: "This answer already exists" }
+    }
+
+    // Add the custom answer option
+    const optionId = generateUUID()
+    const { error: insertError } = await supabaseAdmin.from("answer_options").insert({
+      id: optionId,
+      question_id: questionId,
+      text: answerText,
+      is_custom: true,
+      added_by_id: participantId,
+      added_by_name: participant.name,
+    })
+
+    if (insertError) throw insertError
+
+    // Broadcast the new custom answer via Pusher
+    const customAnswer = {
+      id: optionId,
+      text: answerText,
+      addedBy: participant.name,
+    }
+
+    try {
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.CUSTOM_ANSWER_ADDED, {
+        customAnswer,
+      })
+    } catch (pusherError) {
+      console.error("Error triggering Pusher custom answer event:", pusherError)
+      // Continue execution even if Pusher fails
+    }
+
+    return { success: true, customAnswer }
+  } catch (error) {
+    console.error("Error adding custom answer:", error)
+    return { success: false, error: "Failed to add custom answer" }
+  }
+}
+
+// Submit answer for a question
+export async function submitAnswer(questionId: string, answerText: string) {
+  const participantId = cookies().get("participantId")?.value
+
+  if (!participantId) {
+    redirect("/join")
+  }
+
+  try {
+    // Get the answer option ID
+    const { data: answerOption, error: optionError } = await supabaseAdmin
+      .from("answer_options")
+      .select("id")
+      .eq("question_id", questionId)
+      .eq("text", answerText)
+      .single()
+
+    if (optionError) {
+      return { success: false, error: "Invalid answer option" }
+    }
+
     // Get the correct answer for this question
     const { data: question, error: questionError } = await supabaseAdmin
       .from("questions")
@@ -74,7 +154,7 @@ export async function submitAnswer(questionId: string, answer: string) {
 
     if (questionError) throw questionError
 
-    const isCorrect = question.correct_answer === answer
+    const isCorrect = question.correct_answer === answerText
 
     // Check if the participant has already answered this question
     const { data: existingAnswer, error: checkError } = await supabaseAdmin
@@ -91,7 +171,7 @@ export async function submitAnswer(questionId: string, answer: string) {
       const { error: updateError } = await supabaseAdmin
         .from("answers")
         .update({
-          answer: answer,
+          answer_option_id: answerOption.id,
           is_correct: isCorrect,
         })
         .eq("id", existingAnswer.id)
@@ -103,17 +183,78 @@ export async function submitAnswer(questionId: string, answer: string) {
         id: generateUUID(),
         participant_id: participantId,
         question_id: questionId,
-        answer: answer,
+        answer_option_id: answerOption.id,
         is_correct: isCorrect,
       })
 
       if (insertError) throw insertError
     }
 
+    // After submitting/updating the answer, get updated vote counts
+    const { data: voteData, error: voteError } = await getVoteCounts(questionId)
+
+    if (voteError) throw voteError
+
+    // Broadcast vote update via Pusher
+    try {
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.VOTE_UPDATE, voteData)
+    } catch (pusherError) {
+      console.error("Error triggering Pusher vote update event:", pusherError)
+      // Continue execution even if Pusher fails
+    }
+
     return { success: true }
   } catch (error) {
     console.error("Error submitting answer:", error)
     return { success: false, error: "Failed to submit answer" }
+  }
+}
+
+// Helper function to get vote counts
+async function getVoteCounts(questionId: string) {
+  try {
+    // Get all answer options for this question
+    const { data: options, error: optionsError } = await supabaseAdmin
+      .from("answer_options")
+      .select("id, text")
+      .eq("question_id", questionId)
+
+    if (optionsError) throw optionsError
+
+    // Get all answers for this question
+    const { data: answers, error: answersError } = await supabaseAdmin
+      .from("answers")
+      .select("answer_option_id")
+      .eq("question_id", questionId)
+
+    if (answersError) throw answersError
+
+    // Count votes for each option
+    const voteCounts: { [key: string]: number } = {}
+
+    // Initialize all options with 0 votes
+    options.forEach((option) => {
+      voteCounts[option.text] = 0
+    })
+
+    // Count actual votes
+    answers.forEach((answer) => {
+      const option = options.find((o) => o.id === answer.answer_option_id)
+      if (option) {
+        voteCounts[option.text] = (voteCounts[option.text] || 0) + 1
+      }
+    })
+
+    return {
+      data: {
+        voteCounts,
+        totalVotes: answers.length,
+      },
+      error: null,
+    }
+  } catch (error) {
+    console.error("Error getting vote counts:", error)
+    return { data: null, error: "Failed to get vote counts" }
   }
 }
 
@@ -188,6 +329,10 @@ export async function nextQuestion() {
 
     if (detailsError) throw detailsError
 
+    // When moving to a new question, we need to pre-populate the answer_options table
+    // with the predefined options from the question
+    await populateAnswerOptions(questionDetails.id, questionDetails.options)
+
     // Trigger Pusher event to notify all clients
     try {
       await pusherServer.trigger(GAME_CHANNEL, EVENTS.QUESTION_UPDATE, {
@@ -208,6 +353,43 @@ export async function nextQuestion() {
   } catch (error) {
     console.error("Error advancing to next question:", error)
     return { success: false, error: "Failed to advance to next question" }
+  }
+}
+
+// Helper function to populate answer options
+async function populateAnswerOptions(questionId: string, options: string[]) {
+  try {
+    // First, check which options already exist
+    const { data: existingOptions, error: checkError } = await supabaseAdmin
+      .from("answer_options")
+      .select("text")
+      .eq("question_id", questionId)
+      .eq("is_custom", false)
+
+    if (checkError) throw checkError
+
+    // Filter out options that already exist
+    const existingTexts = existingOptions.map((o) => o.text)
+    const newOptions = options.filter((o) => !existingTexts.includes(o))
+
+    // If there are new options, insert them
+    if (newOptions.length > 0) {
+      const optionsToInsert = newOptions.map((text) => ({
+        id: generateUUID(),
+        question_id: questionId,
+        text: text,
+        is_custom: false,
+      }))
+
+      const { error: insertError } = await supabaseAdmin.from("answer_options").insert(optionsToInsert)
+
+      if (insertError) throw insertError
+    }
+
+    return { success: true }
+  } catch (error) {
+    console.error("Error populating answer options:", error)
+    return { success: false, error: "Failed to populate answer options" }
   }
 }
 
@@ -350,6 +532,11 @@ export async function resetGame() {
     const { error: answersError } = await supabaseAdmin.from("answers").delete()
 
     if (answersError) throw answersError
+
+    // Clear all custom answers
+    const { error: customAnswersError } = await supabaseAdmin.from("custom_answers").delete()
+
+    if (customAnswersError) throw customAnswersError
 
     // Trigger Pusher event to notify all clients
     try {
@@ -527,6 +714,14 @@ export async function deleteQuestion(id: string) {
     if (answersError) {
       console.error("Error deleting answers:", answersError)
       // Continue even if answer deletion fails
+    }
+
+    // Delete any custom answers for this question
+    const { error: customAnswersError } = await supabaseAdmin.from("custom_answers").delete().eq("question_id", id)
+
+    if (customAnswersError) {
+      console.error("Error deleting custom answers:", customAnswersError)
+      // Continue even if custom answer deletion fails
     }
 
     // Check if this was the current question and update game state if needed

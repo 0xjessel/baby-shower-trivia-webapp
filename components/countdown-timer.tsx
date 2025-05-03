@@ -12,8 +12,8 @@ interface CountdownTimerProps {
 
 export default function CountdownTimer({ duration, onTimeUp, isActive, reset }: CountdownTimerProps) {
   const [timeLeft, setTimeLeft] = useState(duration)
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const startTimeRef = useRef<number | null>(null)
+  const requestRef = useRef<number | null>(null)
 
   // Calculate percentage for progress bar
   const percentage = Math.max(0, Math.min(100, (timeLeft / duration) * 100))
@@ -25,57 +25,56 @@ export default function CountdownTimer({ duration, onTimeUp, isActive, reset }: 
     return "text-red-500"
   }
 
-  // Clean up interval on unmount
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-      }
+  // Animation frame based timer for smoother countdown
+  const animate = (time: number) => {
+    if (!startTimeRef.current) {
+      startTimeRef.current = time
     }
-  }, [])
 
-  // Reset timer when reset prop changes or when isActive changes to true
+    const elapsed = Math.floor((time - startTimeRef.current) / 1000)
+    const newTimeLeft = Math.max(0, duration - elapsed)
+
+    setTimeLeft(newTimeLeft)
+
+    if (newTimeLeft <= 0) {
+      if (requestRef.current) {
+        cancelAnimationFrame(requestRef.current)
+        requestRef.current = null
+      }
+      onTimeUp()
+      return
+    }
+
+    requestRef.current = requestAnimationFrame(animate)
+  }
+
+  // Reset and start/stop timer
   useEffect(() => {
     if (isActive) {
       setTimeLeft(duration)
-      startTimeRef.current = Date.now()
+      startTimeRef.current = null
 
-      // Clear any existing interval
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
+      // Cancel any existing animation frame
+      if (requestRef.current) {
+        cancelAnimationFrame(requestRef.current)
       }
 
-      // Set up a new interval that runs every 100ms for smoother updates
-      intervalRef.current = setInterval(() => {
-        if (startTimeRef.current) {
-          const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000)
-          const newTimeLeft = Math.max(0, duration - elapsed)
-
-          setTimeLeft(newTimeLeft)
-
-          if (newTimeLeft <= 0) {
-            if (intervalRef.current) {
-              clearInterval(intervalRef.current)
-              intervalRef.current = null
-            }
-            onTimeUp()
-          }
-        }
-      }, 100)
+      // Start new animation frame loop
+      requestRef.current = requestAnimationFrame(animate)
     } else {
-      // Clear interval when timer is not active
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
+      // Cancel animation when not active
+      if (requestRef.current) {
+        cancelAnimationFrame(requestRef.current)
+        requestRef.current = null
       }
     }
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
+      if (requestRef.current) {
+        cancelAnimationFrame(requestRef.current)
       }
     }
-  }, [reset, isActive, duration, onTimeUp])
+  }, [reset, isActive, duration])
 
   return (
     <div className="relative w-16 h-16 flex items-center justify-center">
