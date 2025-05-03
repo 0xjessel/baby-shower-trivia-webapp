@@ -66,10 +66,16 @@ export default function ResultsPage() {
   const fetchResults = async () => {
     try {
       const res = await fetch("/api/results")
+
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`)
+      }
+
       const data = await res.json()
 
       if (data.waiting) {
         setIsWaiting(true)
+        setIsLoading(false)
       } else if (data.results) {
         setResults(data.results)
         setScore({
@@ -77,10 +83,10 @@ export default function ResultsPage() {
           total: data.results.length,
         })
         setIsWaiting(false)
+        setIsLoading(false)
       }
     } catch (err) {
       console.error("Error fetching results:", err)
-    } finally {
       setIsLoading(false)
     }
   }

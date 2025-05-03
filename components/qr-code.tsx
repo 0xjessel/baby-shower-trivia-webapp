@@ -8,8 +8,8 @@ export default function QRCode() {
 
   useEffect(() => {
     if (canvasRef.current) {
-      // In a real app, this would be your actual URL
-      const joinUrl = window.location.origin + "/join"
+      // Use the new URL for the QR code
+      const joinUrl = "https://babyjayceleaguechallenge.vercel.app/join"
 
       QRCodeLib.toCanvas(canvasRef.current, joinUrl, {
         width: 200,

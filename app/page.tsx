@@ -30,7 +30,7 @@ export default function HomePage() {
 
               <div className="text-center text-sm text-arcane-gray">
                 <p>Or visit:</p>
-                <p className="font-medium text-arcane-blue">trivia.yourdomain.com/join</p>
+                <p className="font-medium text-arcane-blue">babyjayceleaguechallenge.vercel.app/join</p>
               </div>
             </div>
           </CardContent>

@@ -34,6 +34,7 @@ export async function GET() {
 
     // Only show results if the game is in results mode
     if (!game || game.status !== "results") {
+      console.log("Game status is not 'results':", game?.status)
       return NextResponse.json({ waiting: true })
     }
 

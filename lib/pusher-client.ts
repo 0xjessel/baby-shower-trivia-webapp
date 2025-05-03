@@ -61,8 +61,14 @@ export async function createPusherClient() {
       throw new Error("Invalid Pusher configuration received")
     }
 
+    // Enable Pusher logging for debugging
+    PusherClient.logToConsole = true
+
     // Create and return the Pusher client
-    return new PusherClient(key, { cluster })
+    return new PusherClient(key, {
+      cluster,
+      enabledTransports: ["ws", "wss"],
+    })
   } catch (error) {
     console.error("Failed to initialize Pusher client:", error)
     // Return mock client as fallback

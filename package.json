@@ -60,8 +60,8 @@
     "zod": "^3.24.1",
     "@supabase/supabase-js": "latest",
     "pusher-js": "latest",
-    "qrcode": "latest",
-    "pusher": "latest"
+    "pusher": "latest",
+    "qrcode": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",
