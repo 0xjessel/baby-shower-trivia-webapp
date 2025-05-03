@@ -39,7 +39,7 @@ export async function GET() {
     // Get the current question
     const { data: question, error: questionError } = await supabaseAdmin
       .from("questions")
-      .select("id, type, question, image_url, options")
+      .select("id, type, question, image_url, options, allows_custom_answers")
       .eq("id", game.current_question_id)
       .single()
 
@@ -103,6 +103,7 @@ export async function GET() {
         question: question.question,
         imageUrl: question.image_url,
         options: allOptions,
+        allowsCustomAnswers: question.allows_custom_answers,
       },
       gameStatus: game.status,
       customAnswers,

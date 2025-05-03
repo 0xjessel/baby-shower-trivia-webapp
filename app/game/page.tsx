@@ -23,6 +23,7 @@ interface Question {
   question: string
   imageUrl?: string
   options: string[]
+  allowsCustomAnswers?: boolean
 }
 
 interface CustomAnswer {
@@ -44,7 +45,7 @@ export default function GamePage() {
   const [isWaiting, setIsWaiting] = useState(true)
   const [timerActive, setTimerActive] = useState(false)
   const [timerReset, setTimerReset] = useState(0)
-  const [timeIsUp, setTimeIsUp] = useState(false)
+  const [timeIsUp, setTimeIsUp] = useState(timeIsUp)
   const [voteCounts, setVoteCounts] = useState<VoteCounts>({})
   const [totalVotes, setTotalVotes] = useState(0)
   const [customAnswers, setCustomAnswers] = useState<CustomAnswer[]>([])
@@ -124,6 +125,11 @@ export default function GamePage() {
                 })
                 return newCounts
               })
+
+              // Immediately fetch vote counts to get accurate numbers for new custom answers
+              if (currentQuestion) {
+                fetchVoteCounts(currentQuestion.id)
+              }
             }
 
             lastCustomAnswersUpdateRef.current = updateId
@@ -135,7 +141,7 @@ export default function GamePage() {
         console.error("[DEBUG] Error fetching custom answers:", err)
       }
     },
-    [customAnswers],
+    [customAnswers, fetchVoteCounts, currentQuestion],
   )
 
   // Function to check if we're in a preview environment
@@ -258,6 +264,9 @@ export default function GamePage() {
                   })
                   return newCounts
                 })
+
+                // Immediately fetch vote counts to get accurate numbers for new custom answers
+                fetchVoteCounts(data.question.id)
               }
 
               lastCustomAnswersUpdateRef.current = updateId
@@ -397,6 +406,11 @@ export default function GamePage() {
           ...prev,
           [data.customAnswer.text]: 0,
         }))
+
+        // Immediately fetch vote counts to get accurate numbers for the new custom answer
+        if (currentQuestion) {
+          fetchVoteCounts(currentQuestion.id)
+        }
       } else {
         console.log("[DEBUG] Custom answer already exists, skipping")
       }
@@ -435,7 +449,7 @@ export default function GamePage() {
       gameChannel.unbind(EVENTS.SHOW_RESULTS)
       gameChannel.unbind(EVENTS.GAME_RESET)
     }
-  }, [gameChannel, router, currentQuestion, isConnected, customAnswers])
+  }, [gameChannel, router, currentQuestion, isConnected, customAnswers, fetchVoteCounts])
 
   const handleAnswerChange = async (value: string) => {
     if (!currentQuestion) return
@@ -707,31 +721,33 @@ export default function GamePage() {
               })}
 
               {/* Custom answer input field */}
-              <div className="relative flex items-center rounded-lg border border-arcane-blue/20 bg-arcane-navy/50 p-3 transition-colors">
-                <RadioGroupItem
-                  value="__custom__"
-                  id="option-custom"
-                  className="text-arcane-blue z-10 opacity-0 absolute"
-                  disabled
-                />
-                <div className="flex w-full items-center gap-2 z-10">
-                  <Input
-                    placeholder="Add your own answer..."
-                    value={newCustomAnswer}
-                    onChange={(e) => setNewCustomAnswer(e.target.value)}
-                    className="border-none bg-transparent text-arcane-gray-light focus:ring-0 pl-8 h-auto"
-                    disabled={isSubmittingCustom || timeIsUp}
+              {currentQuestion.allowsCustomAnswers !== false && (
+                <div className="relative flex items-center rounded-lg border border-arcane-blue/20 bg-arcane-navy/50 p-3 transition-colors">
+                  <RadioGroupItem
+                    value="__custom__"
+                    id="option-custom"
+                    className="text-arcane-blue z-10 opacity-0 absolute"
+                    disabled
                   />
-                  <Button
-                    onClick={handleAddCustomAnswer}
-                    disabled={!newCustomAnswer.trim() || isSubmittingCustom || timeIsUp}
-                    className="bg-arcane-gold hover:bg-arcane-gold/80 text-arcane-navy h-8 w-8 p-0 rounded-full"
-                    size="icon"
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
+                  <div className="flex w-full items-center gap-2 z-10">
+                    <Input
+                      placeholder="Add your own answer..."
+                      value={newCustomAnswer}
+                      onChange={(e) => setNewCustomAnswer(e.target.value)}
+                      className="border-none bg-transparent text-arcane-gray-light focus:ring-0 pl-8 h-auto"
+                      disabled={isSubmittingCustom || timeIsUp}
+                    />
+                    <Button
+                      onClick={handleAddCustomAnswer}
+                      disabled={!newCustomAnswer.trim() || isSubmittingCustom || timeIsUp}
+                      className="bg-arcane-gold hover:bg-arcane-gold/80 text-arcane-navy h-8 w-8 p-0 rounded-full"
+                      size="icon"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              )}
             </RadioGroup>
 
             {totalVotes > 0 && (

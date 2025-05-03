@@ -4,7 +4,8 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Trash2, PlayCircle } from "lucide-react"
-import { deleteQuestion } from "@/app/actions"
+import { deleteQuestion, setActiveQuestion } from "@/app/actions"
+import { toast } from "@/hooks/use-toast"
 
 interface Question {
   id: string
@@ -13,6 +14,7 @@ interface Question {
   imageUrl?: string
   options: string[]
   correctAnswer: string
+  allowsCustomAnswers?: boolean
 }
 
 interface QuestionListProps {
@@ -23,6 +25,7 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
   const [questions, setQuestions] = useState<Question[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
+  const [isSettingActive, setIsSettingActive] = useState(false)
 
   useEffect(() => {
     fetchQuestions()
@@ -59,6 +62,39 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
         console.error("Error deleting question:", error)
         setError("An unexpected error occurred")
       }
+    }
+  }
+
+  const handleSetActive = async (id: string) => {
+    if (id === currentQuestionId) {
+      return // Already active
+    }
+
+    setIsSettingActive(true)
+    try {
+      const result = await setActiveQuestion(id)
+
+      if (result.success) {
+        toast({
+          title: "Question activated",
+          description: "This question is now active for all participants",
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to activate question",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error setting active question:", error)
+      toast({
+        title: "Error",
+        description: "Failed to activate question",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSettingActive(false)
     }
   }
 
@@ -104,7 +140,8 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
             question.id === currentQuestionId
               ? "border-arcane-gold border-2 shadow-lg shadow-arcane-gold/20"
               : "border-arcane-blue/30"
-          } bg-arcane-navy/80 transition-all duration-200`}
+          } bg-arcane-navy/80 transition-all duration-200 hover:border-arcane-blue/60 cursor-pointer`}
+          onClick={() => handleSetActive(question.id)}
         >
           <CardContent className="p-4">
             <div className="flex items-start justify-between">
@@ -120,13 +157,22 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
                       Active
                     </span>
                   )}
+
+                  {question.allowsCustomAnswers === false && (
+                    <span className="inline-block rounded-full bg-arcane-gray/20 px-2 py-1 text-xs font-medium text-arcane-gray">
+                      No Custom Answers
+                    </span>
+                  )}
                 </div>
                 <h3 className="mt-2 font-medium text-arcane-gray-light">{question.question}</h3>
               </div>
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => handleDelete(question.id)}
+                onClick={(e) => {
+                  e.stopPropagation() // Prevent triggering the card click
+                  handleDelete(question.id)
+                }}
                 className="text-red-400 hover:bg-red-900/20 hover:text-red-300"
                 disabled={question.id === currentQuestionId}
                 title={question.id === currentQuestionId ? "Cannot delete active question" : "Delete question"}
@@ -154,6 +200,23 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
                 ))}
               </ul>
             </div>
+
+            {question.id !== currentQuestionId && (
+              <div className="mt-3 text-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs border-arcane-blue text-arcane-blue hover:bg-arcane-blue/10"
+                  onClick={(e) => {
+                    e.stopPropagation() // Prevent triggering the card click
+                    handleSetActive(question.id)
+                  }}
+                  disabled={isSettingActive}
+                >
+                  {isSettingActive ? "Setting Active..." : "Set as Active Question"}
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       ))}

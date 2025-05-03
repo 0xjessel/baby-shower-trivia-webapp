@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { PlusCircle, X } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Switch } from "@/components/ui/switch"
 
 interface QuestionFormProps {
   onSubmit: (formData: FormData) => Promise<{ success: boolean; error?: string }>
@@ -188,6 +189,21 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
             </RadioGroup>
           </div>
         </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <Label htmlFor="allows-custom-answers" className="text-arcane-gray-light">
+            Allow Custom Answers
+          </Label>
+          <p className="text-xs text-arcane-gray">When enabled, guests can add their own answer options.</p>
+        </div>
+        <Switch
+          id="allows-custom-answers"
+          name="allows_custom_answers"
+          defaultChecked={true}
+          className="data-[state=checked]:bg-arcane-blue"
+        />
       </div>
 
       {error && (

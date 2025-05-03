@@ -74,26 +74,48 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
 
     if (participantError) throw participantError
 
-    // Check if this answer already exists
-    const { data: existingOption, error: optionError } = await supabaseAdmin
+    // Get the question to check if custom answers are allowed
+    const { data: question, error: questionError } = await supabaseAdmin
+      .from("questions")
+      .select("allows_custom_answers")
+      .eq("id", questionId)
+      .single()
+
+    if (questionError) throw questionError
+
+    // If custom answers are disabled for this question
+    if (question.allows_custom_answers === false) {
+      return { success: false, error: "Custom answers are not allowed for this question" }
+    }
+
+    // Normalize the answer text (trim and convert to lowercase for comparison)
+    const normalizedAnswerText = answerText.trim().toLowerCase()
+
+    if (normalizedAnswerText.length === 0) {
+      return { success: false, error: "Answer cannot be empty" }
+    }
+
+    // Check if this answer already exists (case-insensitive)
+    const { data: existingOptions, error: optionError } = await supabaseAdmin
       .from("answer_options")
-      .select("id")
+      .select("id, text")
       .eq("question_id", questionId)
-      .eq("text", answerText)
-      .maybeSingle()
 
     if (optionError) throw optionError
 
-    if (existingOption) {
+    // Check for duplicates case-insensitively
+    const isDuplicate = existingOptions.some((option) => option.text.toLowerCase() === normalizedAnswerText)
+
+    if (isDuplicate) {
       return { success: false, error: "This answer already exists" }
     }
 
-    // Add the custom answer option
+    // Add the custom answer option with the original casing (but trimmed)
     const optionId = generateUUID()
     const { error: insertError } = await supabaseAdmin.from("answer_options").insert({
       id: optionId,
       question_id: questionId,
-      text: answerText,
+      text: answerText.trim(),
       is_custom: true,
       added_by_id: participantId,
       added_by_name: participant.name,
@@ -104,7 +126,7 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
     // Broadcast the new custom answer via Pusher
     const customAnswer = {
       id: optionId,
-      text: answerText,
+      text: answerText.trim(),
       addedBy: participant.name,
     }
 
@@ -415,7 +437,7 @@ export async function nextQuestion() {
     // Get the full question details to send to clients
     const { data: questionDetails, error: detailsError } = await supabaseAdmin
       .from("questions")
-      .select("id, type, question, image_url, options")
+      .select("id, type, question, image_url, options, allows_custom_answers")
       .eq("id", questions[currentIndex].id)
       .single()
 
@@ -434,6 +456,7 @@ export async function nextQuestion() {
           question: questionDetails.question,
           imageUrl: questionDetails.image_url,
           options: questionDetails.options,
+          allowsCustomAnswers: questionDetails.allows_custom_answers,
         },
       })
     } catch (pusherError) {
@@ -760,6 +783,7 @@ export async function uploadQuestion(formData: FormData) {
 
     // Insert the question into the database with a proper UUID
     const questionId = generateUUID()
+    const allowsCustomAnswers = formData.get("allows_custom_answers") !== "false"
 
     const { error } = await supabaseAdmin.from("questions").insert({
       id: questionId,
@@ -768,6 +792,7 @@ export async function uploadQuestion(formData: FormData) {
       image_url: imageUrl,
       options: options,
       correct_answer: options[correctAnswerIndex],
+      allows_custom_answers: allowsCustomAnswers,
     })
 
     if (error) throw error
@@ -852,5 +877,62 @@ export async function deleteQuestion(id: string) {
   } catch (error) {
     console.error("Error deleting question:", error)
     return { success: false, error: "Failed to delete question" }
+  }
+}
+
+// Set a specific question as active
+export async function setActiveQuestion(questionId: string) {
+  // Check if admin is authenticated
+  const adminToken = cookies().get("adminToken")?.value
+  if (!adminToken) {
+    return { success: false, error: "Unauthorized" }
+  }
+
+  try {
+    // Update the game with the specified question
+    const { error: updateError } = await supabaseAdmin
+      .from("games")
+      .update({
+        current_question_id: questionId,
+        status: "active",
+      })
+      .eq("id", "current")
+
+    if (updateError) throw updateError
+
+    // Get the full question details to send to clients
+    const { data: questionDetails, error: detailsError } = await supabaseAdmin
+      .from("questions")
+      .select("id, type, question, image_url, options, allows_custom_answers")
+      .eq("id", questionId)
+      .single()
+
+    if (detailsError) throw detailsError
+
+    // When moving to a new question, we need to pre-populate the answer_options table
+    // with the predefined options from the question
+    await populateAnswerOptions(questionDetails.id, questionDetails.options)
+
+    // Trigger Pusher event to notify all clients
+    try {
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.QUESTION_UPDATE, {
+        question: {
+          id: questionDetails.id,
+          type: questionDetails.type,
+          question: questionDetails.question,
+          imageUrl: questionDetails.image_url,
+          options: questionDetails.options,
+          allowsCustomAnswers: questionDetails.allows_custom_answers,
+        },
+      })
+    } catch (pusherError) {
+      console.error("Error triggering Pusher event:", pusherError)
+      // Continue execution even if Pusher fails
+    }
+
+    return { success: true }
+  } catch (error) {
+    console.error("Error setting active question:", error)
+    return { success: false, error: "Failed to set active question" }
   }
 }
