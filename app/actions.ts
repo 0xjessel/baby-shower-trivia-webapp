@@ -133,19 +133,54 @@ export async function updateVoteCount(questionId: string, selectedAnswer: string
   }
 
   try {
-    // We don't need to update the database here since this is just for real-time UI updates
-    // The actual answer will be saved when the user submits
+    // Get the answer option IDs for both the selected and previous answers
+    let selectedOptionId = null
+    let previousOptionId = null
 
-    // Get vote counts for the question
+    // Get the selected answer option ID
+    if (selectedAnswer) {
+      const { data: selectedOption, error: selectedError } = await supabaseAdmin
+        .from("answer_options")
+        .select("id")
+        .eq("question_id", questionId)
+        .eq("text", selectedAnswer)
+        .maybeSingle()
+
+      if (selectedError) throw selectedError
+      if (selectedOption) selectedOptionId = selectedOption.id
+    }
+
+    // Get the previous answer option ID if there was one
+    if (previousAnswer) {
+      const { data: prevOption, error: prevError } = await supabaseAdmin
+        .from("answer_options")
+        .select("id")
+        .eq("question_id", questionId)
+        .eq("text", previousAnswer)
+        .maybeSingle()
+
+      if (prevError) throw prevError
+      if (prevOption) previousOptionId = prevOption.id
+    }
+
+    // Update the participant's temporary selection in a separate table or cache if needed
+    // This is optional and depends on your implementation
+
+    // Get updated vote counts for the question
     const { data: voteData, error: voteError } = await getVoteCounts(questionId)
 
     if (voteError) throw voteError
 
     console.log("Broadcasting vote counts:", voteData)
 
-    // Broadcast vote update via Pusher
+    // Broadcast vote update via Pusher with more detailed information
     try {
-      await pusherServer.trigger(GAME_CHANNEL, EVENTS.VOTE_UPDATE, voteData)
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.VOTE_UPDATE, {
+        voteCounts: voteData.voteCounts,
+        totalVotes: voteData.totalVotes,
+        questionId: questionId,
+        updatedAt: new Date().toISOString(),
+      })
     } catch (pusherError) {
       console.error("Error triggering Pusher vote update event:", pusherError)
       // Continue execution even if Pusher fails
@@ -278,6 +313,8 @@ async function getVoteCounts(questionId: string) {
         voteCounts[option.text] = (voteCounts[option.text] || 0) + 1
       }
     })
+
+    console.log("Vote counts calculated:", voteCounts, "Total votes:", answers.length)
 
     return {
       data: {

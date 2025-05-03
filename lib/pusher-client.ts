@@ -64,10 +64,19 @@ export async function createPusherClient() {
     // Enable Pusher logging for debugging
     PusherClient.logToConsole = true
 
-    // Create and return the Pusher client
+    // Create and return the Pusher client with improved configuration
     return new PusherClient(key, {
       cluster,
       enabledTransports: ["ws", "wss"],
+      forceTLS: true,
+      enableStats: true,
+      disableStats: false,
+      authEndpoint: "/api/pusher-auth", // Add this if you need private channels
+      auth: {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
     })
   } catch (error) {
     console.error("Failed to initialize Pusher client:", error)

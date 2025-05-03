@@ -17,6 +17,7 @@ export async function GET(request: Request) {
       .eq("question_id", questionId)
 
     if (optionsError) {
+      console.error("Error fetching options:", optionsError)
       throw optionsError
     }
 
@@ -27,6 +28,7 @@ export async function GET(request: Request) {
       .eq("question_id", questionId)
 
     if (answersError) {
+      console.error("Error fetching answers:", answersError)
       throw answersError
     }
 
@@ -46,9 +48,13 @@ export async function GET(request: Request) {
       }
     })
 
+    console.log(`Vote counts for question ${questionId}:`, voteCounts, "Total votes:", answers.length)
+
     return NextResponse.json({
       voteCounts,
       totalVotes: answers.length,
+      questionId: questionId,
+      timestamp: new Date().toISOString(),
     })
   } catch (error) {
     console.error("Error fetching vote counts:", error)

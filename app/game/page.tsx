@@ -168,8 +168,11 @@ export default function GamePage() {
     // Ensure this code only runs in the browser
     if (typeof window === "undefined" || !gameChannel) return
 
+    console.log("Setting up Pusher event listeners")
+
     // Set up Pusher event listeners
     gameChannel.bind(EVENTS.QUESTION_UPDATE, (data: { question: Question }) => {
+      console.log("Received question update:", data)
       setCurrentQuestion(data.question)
       setSelectedAnswer("")
       setSubmittedAnswer("")
@@ -191,15 +194,22 @@ export default function GamePage() {
       setTotalVotes(0)
     })
 
-    // Listen for vote updates
-    gameChannel.bind(EVENTS.VOTE_UPDATE, (data: { voteCounts: VoteCounts; totalVotes: number }) => {
+    // Listen for vote updates with improved logging and error handling
+    gameChannel.bind(EVENTS.VOTE_UPDATE, (data: { voteCounts: VoteCounts; totalVotes: number; questionId: string }) => {
       console.log("Received vote update:", data)
-      setVoteCounts(data.voteCounts)
-      setTotalVotes(data.totalVotes)
+
+      // Only update if this update is for the current question
+      if (currentQuestion && data.questionId === currentQuestion.id) {
+        setVoteCounts(data.voteCounts)
+        setTotalVotes(data.totalVotes)
+      } else {
+        console.log("Ignoring vote update for different question")
+      }
     })
 
     // Listen for custom answer updates
     gameChannel.bind(EVENTS.CUSTOM_ANSWER_ADDED, (data: { customAnswer: CustomAnswer }) => {
+      console.log("Received custom answer:", data)
       setCustomAnswers((prev) => [...prev, data.customAnswer])
 
       // Update vote counts to include the new custom answer
@@ -217,6 +227,7 @@ export default function GamePage() {
 
     // Listen for game reset
     gameChannel.bind(EVENTS.GAME_RESET, () => {
+      console.log("Received GAME_RESET event")
       setCurrentQuestion(null)
       setSelectedAnswer("")
       setSubmittedAnswer("")
@@ -231,6 +242,7 @@ export default function GamePage() {
     })
 
     return () => {
+      console.log("Cleaning up Pusher event listeners")
       // Clean up event listeners
       gameChannel.unbind(EVENTS.QUESTION_UPDATE)
       gameChannel.unbind(EVENTS.VOTE_UPDATE)
@@ -238,12 +250,18 @@ export default function GamePage() {
       gameChannel.unbind(EVENTS.SHOW_RESULTS)
       gameChannel.unbind(EVENTS.GAME_RESET)
     }
-  }, [gameChannel, router])
+  }, [gameChannel, router, currentQuestion])
 
   const handleAnswerChange = async (value: string) => {
     if (!currentQuestion) return
 
     const previousAnswer = previousAnswerRef.current
+
+    console.log("Answer changed:", {
+      from: previousAnswer || "none",
+      to: value,
+      questionId: currentQuestion.id,
+    })
 
     // Optimistically update the UI
     setSelectedAnswer(value)
@@ -277,13 +295,21 @@ export default function GamePage() {
     }
 
     // Prevent multiple simultaneous vote updates
-    if (isUpdatingVoteRef.current) return
+    if (isUpdatingVoteRef.current) {
+      console.log("Vote update already in progress, skipping")
+      return
+    }
 
     isUpdatingVoteRef.current = true
 
     try {
+      console.log("Sending vote update to server")
       // Send the update to the server
-      await updateVoteCount(currentQuestion.id, value, previousAnswer)
+      const result = await updateVoteCount(currentQuestion.id, value, previousAnswer)
+
+      if (!result.success) {
+        console.error("Server reported error updating vote count:", result.error)
+      }
     } catch (error) {
       console.error("Failed to update vote count:", error)
       // If the server update fails, we could revert the optimistic update here
