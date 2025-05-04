@@ -408,19 +408,19 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
     setEditMode((prev) => ({ ...prev, [questionId]: false }))
   }
 
-  // Handler to save the new correct answer
-  const handleSaveCorrectAnswer = async (questionId: string) => {
+  // Handler for selecting a new correct answer (now saves immediately)
+  const handleSelectCorrect = async (questionId: string, option: string) => {
+    setEditCorrectAnswer((prev) => ({ ...prev, [questionId]: option }))
     setIsSaving((prev) => ({ ...prev, [questionId]: true }))
-    const newCorrect = editCorrectAnswer[questionId]
     try {
       const res = await fetch("/api/questions/correct-answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questionId, correctAnswer: newCorrect }),
+        body: JSON.stringify({ questionId, correctAnswer: option }),
       })
       const data = await res.json()
       if (data.success) {
-        setQuestions((prev) => prev.map((q) => q.id === questionId ? { ...q, correctAnswer: newCorrect } : q))
+        setQuestions((prev) => prev.map((q) => q.id === questionId ? { ...q, correctAnswer: option } : q))
         setEditMode((prev) => ({ ...prev, [questionId]: false }))
       } else {
         alert(data.error || "Failed to update correct answer.")
@@ -430,11 +430,6 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
     } finally {
       setIsSaving((prev) => ({ ...prev, [questionId]: false }))
     }
-  }
-
-  // Handler for selecting a new correct answer
-  const handleSelectCorrect = (questionId: string, option: string) => {
-    setEditCorrectAnswer((prev) => ({ ...prev, [questionId]: option }))
   }
 
   if (isLoading) {
@@ -555,7 +550,7 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
                       <div
                         key={option}
                         className={`relative overflow-hidden rounded-md border border-arcane-blue/20 bg-arcane-navy/50 p-2 ${editMode[question.id] ? "cursor-pointer" : ""}`}
-                        onClick={() => editMode[question.id] && handleSelectCorrect(question.id, option)}
+                        onClick={() => editMode[question.id] && !isSaving[question.id] && handleSelectCorrect(question.id, option)}
                       >
                         {/* Background progress bar */}
                         <div
@@ -630,25 +625,14 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
                   </Button>
                 )}
                 {editMode[question.id] && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="success"
-                      className="flex items-center gap-1"
-                      onClick={() => handleSaveCorrectAnswer(question.id)}
-                      disabled={isSaving[question.id]}
-                    >
-                      Save
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleCancelEdit(question.id)}
-                      disabled={isSaving[question.id]}
-                    >
-                      Cancel
-                    </Button>
-                  </>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleCancelEdit(question.id)}
+                    disabled={isSaving[question.id]}
+                  >
+                    Cancel
+                  </Button>
                 )}
               </div>
             </CardContent>
