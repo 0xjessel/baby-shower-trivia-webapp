@@ -1110,7 +1110,7 @@ export async function resetVotes() {
 
 // Upload a new question
 export async function uploadQuestion(formData: FormData) {
-  // Check if admin
+  // Check if admin is authenticated
   const adminToken = cookies().get("adminToken")?.value
   if (!adminToken) {
     console.log("[SERVER] uploadQuestion: Unauthorized - no admin token")
@@ -1165,11 +1165,8 @@ export async function uploadQuestion(formData: FormData) {
 
     // Get options
     const options: string[] = []
-    let correctAnswerIndex = Number.parseInt(formData.get("correctAnswerIndex") as string) || 0
     const noCorrectAnswer = formData.get("no_correct_answer") === "true"
-    console.log(
-      `[SERVER] uploadQuestion: No correct answer: ${noCorrectAnswer}, Correct answer index: ${correctAnswerIndex}`,
-    )
+    console.log(`[SERVER] uploadQuestion: No correct answer: ${noCorrectAnswer}`)
 
     // Only collect options if we're not using the "no prefilled options" mode
     if (!noPrefilledOptions) {
@@ -1190,13 +1187,6 @@ export async function uploadQuestion(formData: FormData) {
       if (options.length < 2 && !noPrefilledOptions) {
         console.log("[SERVER] uploadQuestion: Not enough options")
         return { success: false, error: "At least 2 options are required" }
-      }
-
-      if (correctAnswerIndex >= options.length) {
-        console.log(
-          `[SERVER] uploadQuestion: Correct answer index ${correctAnswerIndex} is out of bounds, resetting to 0`,
-        )
-        correctAnswerIndex = 0
       }
     }
 
@@ -1294,7 +1284,7 @@ export async function uploadQuestion(formData: FormData) {
         ? options.length > 0
           ? options[0]
           : "NONE" // Use first option or "NONE" as placeholder
-        : options[correctAnswerIndex]
+        : options[0]
 
     console.log(
       `[SERVER] uploadQuestion: Correct answer: ${correctAnswer} (${noCorrectAnswer || noPrefilledOptions ? "placeholder - no actual correct answer" : "actual correct answer"})`,
@@ -1492,8 +1482,6 @@ export async function setActiveQuestion(questionId: string) {
     return { success: false, error: "Failed to set active question" }
   }
 }
-
-// Add these new server actions to the existing actions.ts file
 
 // Create a new game
 export async function createGame({ name, description }: { name: string; description?: string }) {
