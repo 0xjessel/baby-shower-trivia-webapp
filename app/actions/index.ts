@@ -11,6 +11,7 @@ export {
   resetGame,
   resetSingleGame,
   resetVotes,
+  resetPlayers,
 } from "./game-actions"
 
 // Question management actions

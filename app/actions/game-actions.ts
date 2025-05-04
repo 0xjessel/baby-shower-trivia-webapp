@@ -383,3 +383,23 @@ export async function resetVotes() {
     return { success: false, error: "Failed to reset votes" }
   }
 }
+
+// Reset all players (remove all participants from the game)
+export async function resetPlayers() {
+  // Check if admin
+  const adminToken = cookies().get("adminToken")?.value
+  if (!adminToken) {
+    return { success: false, error: "Unauthorized" }
+  }
+  try {
+    // Delete all participants
+    const { error } = await supabaseAdmin.from("participants").delete().neq("id", "none")
+    if (error) throw error
+    // Optionally, trigger a Pusher event here if needed
+    revalidatePath("/admin/dashboard")
+    return { success: true }
+  } catch (error) {
+    console.error("Error resetting players:", error)
+    return { success: false, error: "Failed to reset players" }
+  }
+}
