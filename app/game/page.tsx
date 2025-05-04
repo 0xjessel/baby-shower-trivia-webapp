@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -67,6 +69,9 @@ export default function GamePage() {
   // Add a new state variable to track if the user has added a custom answer
   const [hasAddedCustomAnswer, setHasAddedCustomAnswer] = useState(false)
 
+  // Track custom answers we've already processed to avoid duplicates
+  const processedCustomAnswers = useRef(new Set<string>())
+
   // Fetch current question
   const fetchCurrentQuestion = useCallback(async () => {
     try {
@@ -108,6 +113,16 @@ export default function GamePage() {
           currentQuestionRef.current = data.question.id
           setHasAddedCustomAnswer(false) // Reset for new question
 
+          // Reset processed custom answers for new question
+          processedCustomAnswers.current = new Set()
+
+          // Add initial custom answers to processed set
+          if (data.customAnswers) {
+            data.customAnswers.forEach((ca: CustomAnswer) => {
+              processedCustomAnswers.current.add(ca.id)
+            })
+          }
+
           // Reset vote counts for new question
           const initialVoteCounts: VoteCounts = {}
           data.question.options.forEach((option: string) => {
@@ -147,8 +162,22 @@ export default function GamePage() {
 
           // Update custom answers if needed
           if (data.customAnswers && data.customAnswers.length !== customAnswers.length) {
-            setCustomAnswers(data.customAnswers)
-            fetchVoteCounts(data.question.id)
+            // Only update if there are new custom answers
+            const newCustomAnswers = data.customAnswers.filter(
+              (ca: CustomAnswer) => !processedCustomAnswers.current.has(ca.id),
+            )
+
+            if (newCustomAnswers.length > 0) {
+              console.log("Adding new custom answers from API:", newCustomAnswers)
+
+              // Add new custom answers to processed set
+              newCustomAnswers.forEach((ca: CustomAnswer) => {
+                processedCustomAnswers.current.add(ca.id)
+              })
+
+              setCustomAnswers(data.customAnswers)
+              fetchVoteCounts(data.question.id)
+            }
           }
         }
       }
@@ -240,6 +269,7 @@ export default function GamePage() {
       setHasAddedCustomAnswer(false) // Reset this state for new questions
       currentQuestionRef.current = null
       lastVoteUpdateId.current = null
+      processedCustomAnswers.current = new Set() // Reset processed custom answers
 
       // Fetch the new question
       fetchCurrentQuestion()
@@ -280,7 +310,7 @@ export default function GamePage() {
       },
     )
 
-    // Listen for custom answer updates
+    // Listen for custom answer updates - FIXED VERSION
     gameChannel.bind(
       EVENTS.CUSTOM_ANSWER_ADDED,
       (data: {
@@ -291,21 +321,30 @@ export default function GamePage() {
 
         // Only update if this is for the current question
         if (currentQuestionRef.current && data.questionId === currentQuestionRef.current) {
-          // Check if we already have this custom answer
-          const exists = customAnswers.some((ca) => ca.id === data.customAnswer.id)
-
-          if (!exists) {
-            setCustomAnswers((prev) => [...prev, data.customAnswer])
-
-            // Update vote counts to include the new custom answer
-            setVoteCounts((prev) => ({
-              ...prev,
-              [data.customAnswer.text]: 0,
-            }))
-
-            // Fetch updated vote counts
-            fetchVoteCounts(data.questionId)
+          // Check if we've already processed this custom answer
+          if (processedCustomAnswers.current.has(data.customAnswer.id)) {
+            console.log("Skipping already processed custom answer:", data.customAnswer.id)
+            return
           }
+
+          // Mark this custom answer as processed
+          processedCustomAnswers.current.add(data.customAnswer.id)
+
+          // Update custom answers state without causing a full remount
+          setCustomAnswers((prev) => {
+            // Check if we already have this custom answer in state
+            const exists = prev.some((ca) => ca.id === data.customAnswer.id)
+            if (exists) {
+              return prev // No change needed
+            }
+            return [...prev, data.customAnswer] // Add the new custom answer
+          })
+
+          // Update vote counts to include the new custom answer
+          setVoteCounts((prev) => ({
+            ...prev,
+            [data.customAnswer.text]: 0,
+          }))
         }
       },
     )
@@ -332,6 +371,7 @@ export default function GamePage() {
       setHasAddedCustomAnswer(false) // Reset this state
       currentQuestionRef.current = null
       lastVoteUpdateId.current = null
+      processedCustomAnswers.current = new Set() // Reset processed custom answers
     })
 
     return () => {
@@ -342,7 +382,7 @@ export default function GamePage() {
       gameChannel.unbind(EVENTS.SHOW_RESULTS)
       gameChannel.unbind(EVENTS.GAME_RESET)
     }
-  }, [gameChannel, router, fetchCurrentQuestion, fetchVoteCounts, customAnswers])
+  }, [gameChannel, router, fetchCurrentQuestion, fetchVoteCounts])
 
   // Handle answer selection
   const handleAnswerChange = async (value: string) => {
@@ -419,15 +459,28 @@ export default function GamePage() {
   }
 
   // Modify the handleAddCustomAnswer function to prevent page refresh and update the hasAddedCustomAnswer state
-  const handleAddCustomAnswer = async () => {
+  const handleAddCustomAnswer = async (e?: React.FormEvent) => {
+    // Prevent default form submission if this was triggered by a form event
+    if (e) {
+      e.preventDefault()
+    }
+
     if (!newCustomAnswer.trim() || !currentQuestion || timeIsUp) return
 
     setIsSubmittingCustom(true)
 
     try {
+      // Pre-emptively add the custom answer to our processed set to avoid duplicates
+      // We'll use a temporary ID that will be replaced when we get the real one
+      const tempId = `temp-${Date.now()}`
+      processedCustomAnswers.current.add(tempId)
+
       const result = await addCustomAnswer(currentQuestion.id, newCustomAnswer.trim())
 
       if (result.success && result.customAnswer) {
+        // Add the real ID to our processed set
+        processedCustomAnswers.current.add(result.customAnswer.id)
+
         setNewCustomAnswer("")
 
         // Add the custom answer to the local state immediately
@@ -634,6 +687,7 @@ export default function GamePage() {
                         type="button"
                       >
                         <Send className="h-4 w-4" />
+                        <span className="sr-only">Submit custom answer</span>
                       </Button>
                     </div>
                   </div>
