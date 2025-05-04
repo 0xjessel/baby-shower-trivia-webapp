@@ -1,15 +1,12 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Trash2, PlayCircle, Users, Edit2 } from "lucide-react"
+import { Trash2, PlayCircle, Users } from "lucide-react"
 import { deleteQuestion, setActiveQuestion } from "@/app/actions"
 import { usePusher } from "@/hooks/use-pusher"
 import { EVENTS } from "@/lib/pusher-client"
-import EditQuestionModal from "@/components/edit-question-modal"
 
 interface Question {
   id: string
@@ -19,7 +16,6 @@ interface Question {
   options: string[]
   correctAnswer: string
   allowsCustomAnswers?: boolean
-  noCorrectAnswer?: boolean
 }
 
 interface CustomAnswer {
@@ -49,7 +45,6 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
   const lastVoteUpdateId = useRef<Record<string, string>>({})
   const fetchTimestamps = useRef<Record<string, number>>({})
   const fetchInProgress = useRef<Record<string, boolean>>({})
-  const [editingQuestion, setEditingQuestion] = useState<Question | null>(null)
 
   // Fetch questions
   useEffect(() => {
@@ -394,11 +389,6 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
     }
   }
 
-  const handleEditClick = (e: React.MouseEvent, question: Question) => {
-    e.stopPropagation() // Prevent triggering the card click
-    setEditingQuestion(question)
-  }
-
   const handleRetry = () => {
     setError("")
     fetchQuestions()
@@ -442,8 +432,6 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
       {questions.map((question) => {
         // Calculate total votes for this question
         const questionVotes = totalVotes[question.id] || 0
-        // Get custom answers for this question
-        const questionCustomAnswers = customAnswers[question.id] || []
 
         return (
           <Card
@@ -458,7 +446,7 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
                     <span className="inline-block rounded-full bg-arcane-blue/20 px-2 py-1 text-xs font-medium text-arcane-blue">
                       {question.type === "baby-picture" ? "Baby Picture" : "Text Question"}
                     </span>
@@ -481,45 +469,22 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
                         No Custom Answers
                       </span>
                     )}
-
-                    {question.noCorrectAnswer && (
-                      <span className="inline-block rounded-full bg-purple-500/20 px-2 py-1 text-xs font-medium text-purple-300">
-                        Opinion Question
-                      </span>
-                    )}
-
-                    {questionCustomAnswers.length > 0 && (
-                      <span className="inline-block rounded-full bg-arcane-gold/20 px-2 py-1 text-xs font-medium text-arcane-gold">
-                        {questionCustomAnswers.length} Custom Answer{questionCustomAnswers.length !== 1 ? "s" : ""}
-                      </span>
-                    )}
                   </div>
                   <h3 className="mt-2 font-medium text-arcane-gray-light">{question.question}</h3>
                 </div>
-                <div className="flex space-x-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={(e) => handleEditClick(e, question)}
-                    className="text-arcane-blue hover:bg-arcane-blue/10 hover:text-arcane-blue"
-                    title="Edit question"
-                  >
-                    <Edit2 className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={(e) => {
-                      e.stopPropagation() // Prevent triggering the card click
-                      handleDelete(question.id)
-                    }}
-                    className="text-red-400 hover:bg-red-900/20 hover:text-red-300"
-                    disabled={question.id === localCurrentQuestionId}
-                    title={question.id === localCurrentQuestionId ? "Cannot delete active question" : "Delete question"}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation() // Prevent triggering the card click
+                    handleDelete(question.id)
+                  }}
+                  className="text-red-400 hover:bg-red-900/20 hover:text-red-300"
+                  disabled={question.id === localCurrentQuestionId}
+                  title={question.id === localCurrentQuestionId ? "Cannot delete active question" : "Delete question"}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </div>
 
               {question.imageUrl && (
@@ -550,15 +515,15 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
                       >
                         {/* Background progress bar */}
                         <div
-                          className={`absolute inset-0 ${option === question.correctAnswer && !question.noCorrectAnswer ? "bg-green-500/10" : "bg-arcane-blue/10"}`}
+                          className={`absolute inset-0 ${option === question.correctAnswer ? "bg-green-500/10" : "bg-arcane-blue/10"}`}
                           style={{ width: `${percentage}%` }}
                         />
                         <div className="relative flex items-center justify-between z-10">
                           <div className="flex-1">
                             <span
-                              className={`${option === question.correctAnswer && !question.noCorrectAnswer ? "text-green-500 font-medium" : "text-arcane-gray-light"}`}
+                              className={`${option === question.correctAnswer ? "text-green-500 font-medium" : "text-arcane-gray-light"}`}
                             >
-                              {option} {option === question.correctAnswer && !question.noCorrectAnswer && "(Correct)"}
+                              {option} {option === question.correctAnswer && "(Correct)"}
                             </span>
                           </div>
                           <div className="flex items-center text-xs text-arcane-gold">
@@ -572,7 +537,7 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
                   })}
 
                   {/* Custom answers */}
-                  {questionCustomAnswers.map((customAnswer) => {
+                  {customAnswers[question.id]?.map((customAnswer) => {
                     const voteCount = voteCounts[question.id]?.[customAnswer.text] || 0
                     const totalVotesForQuestion = totalVotes[question.id] || 0
                     const percentage =
@@ -605,19 +570,6 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
           </Card>
         )
       })}
-
-      {/* Edit Question Modal */}
-      {editingQuestion && (
-        <EditQuestionModal
-          question={editingQuestion}
-          onClose={() => {
-            setEditingQuestion(null)
-            // Refresh questions after editing
-            fetchQuestions()
-          }}
-          customAnswersCount={customAnswers[editingQuestion.id]?.length || 0}
-        />
-      )}
     </div>
   )
 }

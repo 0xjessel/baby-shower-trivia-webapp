@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react"
 
-function PlayerHeartbeatComponent() {
+export default function PlayerHeartbeat() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
@@ -35,7 +35,3 @@ function PlayerHeartbeatComponent() {
   // This component doesn't render anything
   return null
 }
-
-// Export both as named and default export
-export const PlayerHeartbeat = PlayerHeartbeatComponent
-export default PlayerHeartbeatComponent
