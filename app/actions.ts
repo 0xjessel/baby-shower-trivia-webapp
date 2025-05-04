@@ -171,6 +171,78 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
       addedBy: participant.name,
     }
 
+    // NEW: Automatically submit a vote for the custom answer
+    console.log("[SERVER] Automatically submitting vote for custom answer")
+
+    // Get the question details including correct_answer and no_correct_answer flag
+    const { data: questionDetails, error: questionDetailsError } = await supabaseAdmin
+      .from("questions")
+      .select("correct_answer, no_correct_answer")
+      .eq("id", questionId)
+      .single()
+
+    if (questionDetailsError) {
+      console.log("[SERVER] Error getting question details:", questionDetailsError)
+      throw questionDetailsError
+    }
+
+    // If the question has no correct answer, all answers are considered "correct" (or none are)
+    // For display purposes, we'll consider all answers "correct" for opinion questions
+    const isCorrect = questionDetails.no_correct_answer ? true : questionDetails.correct_answer === answerText.trim()
+
+    // Check if the participant has already answered this question
+    const { data: existingAnswer, error: checkError } = await supabaseAdmin
+      .from("answers")
+      .select("id")
+      .eq("participant_id", participantId)
+      .eq("question_id", questionId)
+      .maybeSingle()
+
+    if (checkError) {
+      console.log("[SERVER] Error checking existing answer:", checkError)
+      throw checkError
+    }
+
+    if (existingAnswer) {
+      // Update existing answer to the new custom answer
+      console.log("[SERVER] Updating existing answer to custom answer")
+      const { error: updateError } = await supabaseAdmin
+        .from("answers")
+        .update({
+          answer_option_id: optionId,
+          is_correct: isCorrect,
+        })
+        .eq("id", existingAnswer.id)
+
+      if (updateError) {
+        console.log("[SERVER] Error updating answer:", updateError)
+        throw updateError
+      }
+    } else {
+      // Insert new answer with a proper UUID
+      console.log("[SERVER] Inserting new answer for custom answer")
+      const { error: insertAnswerError } = await supabaseAdmin.from("answers").insert({
+        id: generateUUID(),
+        participant_id: participantId,
+        question_id: questionId,
+        answer_option_id: optionId,
+        is_correct: isCorrect,
+      })
+
+      if (insertAnswerError) {
+        console.log("[SERVER] Error inserting answer:", insertAnswerError)
+        throw insertAnswerError
+      }
+    }
+
+    // Get updated vote counts after adding the vote
+    const { data: voteData, error: voteError } = await getVoteCounts(questionId)
+
+    if (voteError) {
+      console.log("[SERVER] Error getting vote counts:", voteError)
+      throw voteError
+    }
+
     // Broadcast the new custom answer via Pusher
     try {
       console.log("[SERVER] Broadcasting custom answer via Pusher")
@@ -178,6 +250,8 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
         customAnswer,
         questionId,
         timestamp: Date.now(), // Add timestamp to make the event unique
+        voteCounts: voteData.voteCounts, // Include updated vote counts
+        totalVotes: voteData.totalVotes,
       })
       console.log("[SERVER] Pusher event triggered successfully")
     } catch (pusherError) {
@@ -186,7 +260,7 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
     }
 
     console.log("[SERVER] addCustomAnswer completed successfully")
-    return { success: true, customAnswer }
+    return { success: true, customAnswer, voteCounts: voteData.voteCounts, totalVotes: voteData.totalVotes }
   } catch (error) {
     console.error("[SERVER] Error adding custom answer:", error)
     return { success: false, error: "Failed to add custom answer" }
