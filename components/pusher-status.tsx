@@ -27,3 +27,5 @@ export function PusherStatus() {
     </div>
   )
 }
+
+export default PusherStatus

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Users } from "lucide-react"
 import CountdownTimer from "@/components/countdown-timer"
 import CustomAnswerInput from "@/components/custom-answer-input"
+import { LoadingSpinner } from "@/components/loading-spinner"
 import type { Question, CustomAnswer, VoteCounts } from "@/types/game"
 
 interface QuestionDisplayProps {
@@ -22,6 +23,7 @@ interface QuestionDisplayProps {
   totalVotes: number
   customAnswers: CustomAnswer[]
   isSubmittingAnswer: boolean
+  isLoadingQuestion: boolean
   onAnswerChange: (value: string) => void
   onTimeUp: () => void
   // Custom answer props
@@ -45,6 +47,7 @@ export default function QuestionDisplay({
   totalVotes,
   customAnswers,
   isSubmittingAnswer,
+  isLoadingQuestion,
   onAnswerChange,
   onTimeUp,
   // Custom answer props
@@ -64,6 +67,17 @@ export default function QuestionDisplay({
 
   // Determine if this is an opinion question (no timer needed)
   const isOpinionQuestion = question.isOpinionQuestion === true
+
+  // If loading a new question, show spinner
+  if (isLoadingQuestion) {
+    return (
+      <Card className="w-full max-w-md border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
+        <CardContent className="p-6 flex flex-col items-center justify-center min-h-[300px]">
+          <LoadingSpinner size="lg" message="Loading next question..." />
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <Card className="w-full max-w-md border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">

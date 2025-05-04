@@ -120,96 +120,90 @@ export async function deleteQuestion(questionId: string) {
   }
 }
 
-// Set the active question
+// Set a specific question as active
 export async function setActiveQuestion(questionId: string) {
+  // Check if admin is authenticated
+  const adminToken = cookies().get("adminToken")?.value
+  if (!adminToken) {
+    return { success: false, error: "Unauthorized" }
+  }
+
   try {
-    // Check if user is authenticated as admin
-    const isAdmin = await checkAdminAuth()
-    if (!isAdmin) {
-      return { success: false, error: "Unauthorized" }
-    }
+    // First, trigger a loading event to show spinners on client devices
+    await pusherServer.trigger(GAME_CHANNEL, "loading-question", {
+      timestamp: Date.now(),
+    })
 
     // Get the active game
-    const { data: activeGame, error: gameError } = await supabaseAdmin
+    const { data: activeGame, error: activeGameError } = await supabaseAdmin
       .from("games")
       .select("id")
       .eq("is_active", true)
       .single()
 
-    if (gameError) {
-      console.error("Error getting active game:", gameError)
+    if (activeGameError || !activeGame) {
       return { success: false, error: "No active game found" }
     }
 
-    // Get the question details
-    const { data: question, error: questionError } = await supabaseAdmin
-      .from("questions")
-      .select("*")
-      .eq("id", questionId)
-      .single()
-
-    if (questionError || !question) {
-      console.error("Error getting question:", questionError)
-      return { success: false, error: "Question not found" }
-    }
-
-    // Update the active game with the new question
+    // Update the active game with the specified question
     const { error: updateError } = await supabaseAdmin
       .from("games")
       .update({
         current_question_id: questionId,
-        status: "active",
+        status: "active", // Ensure status is set to active
       })
       .eq("id", activeGame.id)
 
-    if (updateError) {
-      console.error("Error updating game:", updateError)
-      return { success: false, error: "Failed to set active question" }
-    }
+    if (updateError) throw updateError
 
-    // Pre-populate answer_options table with the predefined options
-    const answerOptions = question.options.map((option: string) => ({
-      question_id: questionId,
-      text: option,
-      is_custom: false,
-    }))
-
-    // Delete any existing non-custom options for this question
-    const { error: deleteOptionsError } = await supabaseAdmin
-      .from("answer_options")
-      .delete()
-      .eq("question_id", questionId)
-      .eq("is_custom", false)
-
-    if (deleteOptionsError) {
-      console.error("Error deleting existing options:", deleteOptionsError)
-      // Continue anyway, as this is not critical
-    }
-
-    // Insert the predefined options
-    const { error: insertOptionsError } = await supabaseAdmin.from("answer_options").insert(answerOptions)
-
-    if (insertOptionsError) {
-      console.error("Error inserting options:", insertOptionsError)
-      // Continue anyway, as this is not critical
-    }
-
-    // Notify clients of the question change
-    await pusherServer.trigger("game-channel", "question-update", {
+    // Log the state after updates for debugging
+    console.log("[SERVER] Question set as active:", {
       questionId,
-      options: question.options,
-      correctAnswer: question.correct_answer,
-      allowsCustomAnswers: question.allows_custom_answers,
-      isOpinionQuestion: question.is_opinion_question,
+      activeGameId: activeGame.id,
     })
 
-    // Revalidate the questions page
-    revalidatePath("/admin/dashboard")
+    // Get the full question details to send to clients
+    const { data: questionDetails, error: detailsError } = await supabaseAdmin
+      .from("questions")
+      .select("id, type, question, image_url, options, allows_custom_answers, no_correct_answer")
+      .eq("id", questionId)
+      .single()
+
+    if (detailsError) throw detailsError
+
+    // When moving to a new question, we need to pre-populate the answer_options table
+    // with the predefined options from the question
+    await populateAnswerOptions(questionDetails.id, questionDetails.options)
+
+    // Trigger Pusher event to notify all clients
+    try {
+      console.log("[SERVER] Triggering QUESTION_UPDATE event via Pusher for question:", questionDetails.id)
+
+      // Add a timestamp to ensure clients recognize this as a new event
+      const eventData = {
+        question: {
+          id: questionDetails.id,
+          type: questionDetails.type,
+          question: questionDetails.question,
+          imageUrl: questionDetails.image_url,
+          options: questionDetails.options,
+          allowsCustomAnswers: questionDetails.allows_custom_answers,
+          isOpinionQuestion: questionDetails.no_correct_answer || false,
+        },
+        timestamp: Date.now(),
+      }
+
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.QUESTION_UPDATE, eventData)
+      console.log("[SERVER] Successfully triggered QUESTION_UPDATE event")
+    } catch (pusherError) {
+      console.error("Error triggering Pusher event:", pusherError)
+      // Continue execution even if Pusher fails
+    }
 
     return { success: true }
   } catch (error) {
     console.error("Error setting active question:", error)
-    return { success: false, error: "An unexpected error occurred" }
+    return { success: false, error: "Failed to set active question" }
   }
 }
 
@@ -222,6 +216,11 @@ export async function nextQuestion() {
   }
 
   try {
+    // First, trigger a loading event to show spinners on client devices
+    await pusherServer.trigger(GAME_CHANNEL, "loading-question", {
+      timestamp: Date.now(),
+    })
+
     // Get the active game
     const { data: activeGame, error: gameError } = await supabaseAdmin
       .from("games")
@@ -270,7 +269,7 @@ export async function nextQuestion() {
     // Get the full question details to send to clients
     const { data: questionDetails, error: detailsError } = await supabaseAdmin
       .from("questions")
-      .select("id, type, question, image_url, options, allows_custom_answers")
+      .select("id, type, question, image_url, options, allows_custom_answers, no_correct_answer")
       .eq("id", questions[currentIndex].id)
       .single()
 
@@ -293,6 +292,7 @@ export async function nextQuestion() {
           imageUrl: questionDetails.image_url,
           options: questionDetails.options,
           allowsCustomAnswers: questionDetails.allows_custom_answers,
+          isOpinionQuestion: questionDetails.no_correct_answer || false,
         },
         timestamp: Date.now(),
       }
@@ -320,6 +320,11 @@ export async function previousQuestion() {
   }
 
   try {
+    // First, trigger a loading event to show spinners on client devices
+    await pusherServer.trigger(GAME_CHANNEL, "loading-question", {
+      timestamp: Date.now(),
+    })
+
     // Get the active game
     const { data: activeGame, error: gameError } = await supabaseAdmin
       .from("games")
@@ -371,7 +376,7 @@ export async function previousQuestion() {
     // Get the full question details to send to clients
     const { data: questionDetails, error: detailsError } = await supabaseAdmin
       .from("questions")
-      .select("id, type, question, image_url, options, allows_custom_answers")
+      .select("id, type, question, image_url, options, allows_custom_answers, no_correct_answer")
       .eq("id", questions[previousIndex].id)
       .single()
 
@@ -387,6 +392,7 @@ export async function previousQuestion() {
           imageUrl: questionDetails.image_url,
           options: questionDetails.options,
           allowsCustomAnswers: questionDetails.allows_custom_answers,
+          isOpinionQuestion: questionDetails.no_correct_answer || false,
         },
         timestamp: Date.now(),
       })
