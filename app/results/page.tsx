@@ -39,6 +39,7 @@ export default function ResultsPage() {
   const router = useRouter()
   const { gameChannel, isLoading: isPusherLoading } = usePusher()
   const [confettiLoaded, setConfettiLoaded] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
 
   useEffect(() => {
     // Ensure this code only runs in the browser
@@ -256,12 +257,24 @@ export default function ResultsPage() {
   return (
     <div className="min-h-screen bg-arcane-navy p-4">
       {/* Confetti container */}
-      <div ref={confettiRef} className="fixed inset-0 pointer-events-none z-50"></div>
+      <div ref={confettiRef} className="fixed inset-0 pointer-events-none z-40"></div>
 
       {/* Include the heartbeat component */}
       <PlayerHeartbeat />
 
       <div className="mx-auto max-w-md">
+        {/* Victory image with animations */}
+        <div className="mb-6 flex justify-center">
+          <img
+            src="/images/victory-screen.png"
+            alt="Victory!"
+            className={`w-full max-w-[250px] h-auto rounded-lg animate-bounce-slow ${
+              imageLoaded ? "opacity-100" : "opacity-0"
+            } transition-opacity duration-1000`}
+            onLoad={() => setImageLoaded(true)}
+          />
+        </div>
+
         <div className="mb-6 text-center">
           <h1 className="text-3xl font-bold text-arcane-blue">Your Results</h1>
           <p className="mt-2 text-lg text-arcane-gray">

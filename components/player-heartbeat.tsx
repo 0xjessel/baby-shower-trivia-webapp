@@ -1,37 +1,40 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect } from "react"
 
-export default function PlayerHeartbeat() {
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
-
+export function PlayerHeartbeat() {
   useEffect(() => {
-    // Send a heartbeat immediately
-    sendHeartbeat()
+    if (typeof window === "undefined") return
 
-    // Set up interval to send heartbeats every 30 seconds
-    intervalRef.current = setInterval(sendHeartbeat, 30000)
+    const playerName = localStorage.getItem("playerName")
+    if (!playerName) return
 
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
+    // Send heartbeat every 30 seconds
+    const sendHeartbeat = async () => {
+      try {
+        await fetch("/api/player-heartbeat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ playerName }),
+        })
+      } catch (error) {
+        console.error("Failed to send heartbeat:", error)
       }
     }
+
+    // Send initial heartbeat
+    sendHeartbeat()
+
+    // Set up interval for regular heartbeats
+    const intervalId = setInterval(sendHeartbeat, 30000)
+
+    return () => clearInterval(intervalId)
   }, [])
 
-  const sendHeartbeat = async () => {
-    try {
-      await fetch("/api/player-heartbeat", {
-        method: "POST",
-        headers: {
-          "Cache-Control": "no-cache",
-        },
-      })
-    } catch (error) {
-      console.error("Failed to send heartbeat:", error)
-    }
-  }
-
-  // This component doesn't render anything
   return null
 }
+
+// Also provide a default export for compatibility
+export default PlayerHeartbeat
