@@ -511,7 +511,7 @@ export default function GamePage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-arcane-navy p-4">
         <PlayerHeartbeat />
-        <Card className="w-full max-w-md border-2 border-arcane-blue/50 bg-arcane-navy/80 text-center shadow-md">
+        <Card className="w-full max-w-md border-2 border-arcane-blue/50 bg-arcane-navy/80 text-center shadow-md hextech-border">
           <CardContent className="pt-6">
             <h2 className="text-xl font-semibold text-arcane-gray-light">Waiting for the game to start</h2>
             <p className="mt-2 text-arcane-gray">The host will start the game soon!</p>
@@ -535,7 +535,7 @@ export default function GamePage() {
         </div>
       )}
 
-      <Card className="w-full max-w-md border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
+      <Card className="w-full max-w-md border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md hextech-border">
         <CardContent className="p-6">
           <div className="flex justify-between items-start mb-4">
             <h2 className="text-xl font-semibold text-arcane-blue flex-1">{currentQuestion.question}</h2>

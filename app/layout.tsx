@@ -3,6 +3,7 @@ import "@/app/globals.css"
 import { PusherProvider } from "@/hooks/use-pusher"
 import { PusherStatus } from "@/components/pusher-status"
 import { ToastContainer } from "@/components/toast"
+import HextechBackground from "@/components/hextech-background"
 
 export default function RootLayout({
   children,
@@ -21,6 +22,7 @@ export default function RootLayout({
         <meta property="og:url" content="https://babyjayceleaguechallenge.vercel.app" />
       </head>
       <body className="bg-arcane-navy">
+        <HextechBackground />
         <PusherProvider>
           {children}
           <PusherStatus />
