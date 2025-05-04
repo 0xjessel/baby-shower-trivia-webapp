@@ -41,12 +41,12 @@ export default function GamePage() {
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null)
   const [selectedAnswer, setSelectedAnswer] = useState<string>("")
   const [submittedAnswer, setSubmittedAnswer] = useState<string>("")
-  const [hasSubmitted, setHasSubmitted] = useState(false)
+  const [hasSubmitted, setHasSubmitted] = useState(hasSubmitted)
   const [isLoading, setIsLoading] = useState(true)
   const [isWaiting, setIsWaiting] = useState(true)
   const [timerActive, setTimerActive] = useState(false)
   const [timerReset, setTimerReset] = useState(0)
-  const [timeIsUp, setTimeIsUp] = useState(false)
+  const [timeIsUp, setTimeIsUp] = useState(timeIsUp)
   const [voteCounts, setVoteCounts] = useState<VoteCounts>({})
   const [totalVotes, setTotalVotes] = useState(0)
   const [customAnswers, setCustomAnswers] = useState<CustomAnswer[]>([])
@@ -555,81 +555,91 @@ export default function GamePage() {
           )}
 
           <div className="mb-6">
-            <RadioGroup
-              value={selectedAnswer}
-              onValueChange={handleAnswerChange}
-              className="space-y-3"
-              disabled={timeIsUp || isSubmittingAnswer}
-            >
-              {allOptions.map((option, index) => {
-                const voteCount = voteCounts[option] || 0
-                const percentage = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0
-                const isCustom = customAnswers.some((ca) => ca.text === option)
-                const addedBy = isCustom ? customAnswers.find((ca) => ca.text === option)?.addedBy : null
+            <form onSubmit={(e) => e.preventDefault()}>
+              <RadioGroup
+                value={selectedAnswer}
+                onValueChange={handleAnswerChange}
+                className="space-y-3"
+                disabled={timeIsUp || isSubmittingAnswer}
+              >
+                {allOptions.map((option, index) => {
+                  const voteCount = voteCounts[option] || 0
+                  const percentage = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0
+                  const isCustom = customAnswers.some((ca) => ca.text === option)
+                  const addedBy = isCustom ? customAnswers.find((ca) => ca.text === option)?.addedBy : null
 
-                return (
-                  <div
-                    key={index}
-                    className={`relative flex items-center rounded-lg border p-3 transition-colors overflow-hidden ${
-                      selectedAnswer === option
-                        ? "border-arcane-blue bg-arcane-blue/10"
-                        : "border-arcane-blue/20 bg-arcane-navy/50"
-                    } ${timeIsUp ? "opacity-70" : ""} cursor-pointer`}
-                    onClick={() => !timeIsUp && !isSubmittingAnswer && handleAnswerChange(option)}
-                  >
-                    {/* Background progress bar */}
-                    <div className="absolute inset-0 bg-arcane-gold/10 z-0" style={{ width: `${percentage}%` }} />
-
-                    <RadioGroupItem value={option} id={`option-${index}`} className="text-arcane-blue z-10" />
-                    <div className="ml-2 w-full z-10">
-                      <Label htmlFor={`option-${index}`} className="text-arcane-gray-light cursor-pointer">
-                        {option}
-                      </Label>
-
-                      {isCustom && addedBy && <p className="text-xs text-arcane-gold mt-0.5">Added by {addedBy}</p>}
-                    </div>
-
-                    {/* Vote count indicator */}
-                    <div className="flex items-center text-xs text-arcane-gold ml-2 z-10">
-                      <Users className="h-3 w-3 mr-1" />
-                      <span>{voteCount}</span>
-                    </div>
-                  </div>
-                )
-              })}
-
-              {currentQuestion.allowsCustomAnswers !== false && !timeIsUp && !hasAddedCustomAnswer && (
-                <div className="relative flex items-center rounded-lg border border-arcane-blue/20 bg-arcane-navy/50 p-3 transition-colors">
-                  <RadioGroupItem
-                    value="__custom__"
-                    id="option-custom"
-                    className="text-arcane-blue z-10 opacity-0 absolute"
-                    disabled
-                  />
-                  <div className="flex w-full items-center gap-2 z-10">
-                    <Input
-                      placeholder="Add your own answer..."
-                      value={newCustomAnswer}
-                      onChange={(e) => setNewCustomAnswer(e.target.value)}
-                      className="border-none bg-transparent text-arcane-gray-light focus:ring-0 pl-8 h-auto"
-                      disabled={isSubmittingCustom || timeIsUp}
-                    />
-                    <Button
-                      onClick={(e) => {
-                        e.preventDefault()
-                        handleAddCustomAnswer()
-                      }}
-                      disabled={!newCustomAnswer.trim() || isSubmittingCustom || timeIsUp}
-                      className="bg-arcane-gold hover:bg-arcane-gold/80 text-arcane-navy h-8 w-8 p-0 rounded-full"
-                      size="icon"
-                      type="button"
+                  return (
+                    <div
+                      key={index}
+                      className={`relative flex items-center rounded-lg border p-3 transition-colors overflow-hidden ${
+                        selectedAnswer === option
+                          ? "border-arcane-blue bg-arcane-blue/10"
+                          : "border-arcane-blue/20 bg-arcane-navy/50"
+                      } ${timeIsUp ? "opacity-70" : ""} cursor-pointer`}
+                      onClick={() => !timeIsUp && !isSubmittingAnswer && handleAnswerChange(option)}
                     >
-                      <Send className="h-4 w-4" />
-                    </Button>
+                      {/* Background progress bar */}
+                      <div className="absolute inset-0 bg-arcane-gold/10 z-0" style={{ width: `${percentage}%` }} />
+
+                      <RadioGroupItem value={option} id={`option-${index}`} className="text-arcane-blue z-10" />
+                      <div className="ml-2 w-full z-10">
+                        <Label htmlFor={`option-${index}`} className="text-arcane-gray-light cursor-pointer">
+                          {option}
+                        </Label>
+
+                        {isCustom && addedBy && <p className="text-xs text-arcane-gold mt-0.5">Added by {addedBy}</p>}
+                      </div>
+
+                      {/* Vote count indicator */}
+                      <div className="flex items-center text-xs text-arcane-gold ml-2 z-10">
+                        <Users className="h-3 w-3 mr-1" />
+                        <span>{voteCount}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {currentQuestion.allowsCustomAnswers !== false && !timeIsUp && !hasAddedCustomAnswer && (
+                  <div className="relative flex items-center rounded-lg border border-arcane-blue/20 bg-arcane-navy/50 p-3 transition-colors">
+                    <RadioGroupItem
+                      value="__custom__"
+                      id="option-custom"
+                      className="text-arcane-blue z-10 opacity-0 absolute"
+                      disabled
+                    />
+                    <div className="flex w-full items-center gap-2 z-10">
+                      <Input
+                        placeholder="Add your own answer..."
+                        value={newCustomAnswer}
+                        onChange={(e) => setNewCustomAnswer(e.target.value)}
+                        className="border-none bg-transparent text-arcane-gray-light focus:ring-0 pl-8 h-auto"
+                        disabled={isSubmittingCustom || timeIsUp}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            if (newCustomAnswer.trim() && !isSubmittingCustom && !timeIsUp) {
+                              handleAddCustomAnswer()
+                            }
+                          }
+                        }}
+                      />
+                      <Button
+                        onClick={(e) => {
+                          e.preventDefault()
+                          handleAddCustomAnswer()
+                        }}
+                        disabled={!newCustomAnswer.trim() || isSubmittingCustom || timeIsUp}
+                        className="bg-arcane-gold hover:bg-arcane-gold/80 text-arcane-navy h-8 w-8 p-0 rounded-full"
+                        size="icon"
+                        type="button"
+                      >
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              )}
-            </RadioGroup>
+                )}
+              </RadioGroup>
+            </form>
 
             {totalVotes > 0 && (
               <div className="mt-2 text-xs text-arcane-gray flex items-center justify-end">
