@@ -310,7 +310,22 @@ export function useGameState() {
 
           // Add the custom answer to the local state immediately
           const newCustomAnswerObj = result.customAnswer
-          setCustomAnswers((prev) => [...prev, newCustomAnswerObj])
+
+          // Ensure the addedBy field is set
+          if (!newCustomAnswerObj.addedBy && playerNameRef.current) {
+            newCustomAnswerObj.addedBy = playerNameRef.current
+          }
+
+          // Check for duplicates before adding
+          const isDuplicate = customAnswers.some(
+            (ca) => ca.text.toLowerCase().trim() === newCustomAnswerObj.text.toLowerCase().trim(),
+          )
+
+          if (!isDuplicate) {
+            setCustomAnswers((prev) => [...prev, newCustomAnswerObj])
+          } else {
+            console.log("[DEBUG] Prevented adding duplicate custom answer locally")
+          }
 
           // Set the newly added answer as the selected answer
           setSelectedAnswer(newCustomAnswerObj.text)

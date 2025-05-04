@@ -201,9 +201,24 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
         customAnswer,
         questionId,
         timestamp: Date.now(), // Add timestamp to make the event unique
-        voteCounts: voteData.voteCounts, // Include updated vote counts
-        totalVotes: voteData.totalVotes,
+        // Don't include vote counts here - we'll send a separate VOTE_UPDATE event
       })
+
+      // Send a separate vote update event with a slight delay to avoid race conditions
+      setTimeout(async () => {
+        try {
+          await pusherServer.trigger(GAME_CHANNEL, EVENTS.VOTE_UPDATE, {
+            voteCounts: voteData.voteCounts,
+            totalVotes: voteData.totalVotes,
+            questionId: questionId,
+            timestamp: new Date().toISOString(),
+            source: "customAnswer",
+          })
+        } catch (voteUpdateError) {
+          console.error("[SERVER] Error triggering vote update after custom answer:", voteUpdateError)
+        }
+      }, 100)
+
       console.log("[SERVER] Pusher event triggered successfully")
     } catch (pusherError) {
       console.error("[SERVER] Error triggering Pusher custom answer event:", pusherError)

@@ -140,14 +140,45 @@ export function useGamePusher(props: GamePusherProps) {
 
         // Only update if this is for the current question
         if (currentQuestionRef.current && data.questionId === currentQuestionRef.current) {
-          // Check if we already have this custom answer
-          const exists = customAnswers.some((ca) => ca.id === data.customAnswer.id)
+          // More robust duplicate detection - check both ID and text
+          const existsById = customAnswers.some((ca) => ca.id === data.customAnswer.id)
+          const existsByText = customAnswers.some(
+            (ca) => ca.text.toLowerCase().trim() === data.customAnswer.text.toLowerCase().trim(),
+          )
 
-          // Also check if this is our own custom answer (by checking if we've already added a custom answer)
-          // This prevents duplicate answers when receiving our own Pusher event
-          if (!exists && !hasAddedCustomAnswer) {
+          const exists = existsById || existsByText
+
+          // Log the duplicate detection results
+          if (exists) {
+            console.log("[DEBUG] Duplicate custom answer detected:", existsById ? "by ID" : "by text content")
+
+            // If it exists by text but not by ID, we might need to update the metadata
+            if (!existsById && existsByText) {
+              console.log("[DEBUG] Updating metadata for existing custom answer")
+              setCustomAnswers((prev) =>
+                prev.map((ca) =>
+                  ca.text.toLowerCase().trim() === data.customAnswer.text.toLowerCase().trim()
+                    ? { ...ca, addedBy: data.customAnswer.addedBy || ca.addedBy }
+                    : ca,
+                ),
+              )
+            }
+
+            return
+          }
+
+          // This is a new custom answer from another participant
+          if (!hasAddedCustomAnswer || data.customAnswer.addedBy !== localStorage.getItem("playerName")) {
+            console.log("[DEBUG] Adding new custom answer from another participant")
+
+            // Ensure the custom answer has the addedBy property
+            const customAnswerWithAddedBy = {
+              ...data.customAnswer,
+              addedBy: data.customAnswer.addedBy || "Unknown",
+            }
+
             // Add the new custom answer to the list
-            setCustomAnswers((prev) => [...prev, data.customAnswer])
+            setCustomAnswers((prev) => [...prev, customAnswerWithAddedBy])
 
             // Update vote counts to include the new custom answer
             setVoteCounts((prev) => ({
