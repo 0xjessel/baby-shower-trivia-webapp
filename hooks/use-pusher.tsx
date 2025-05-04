@@ -20,19 +20,6 @@ const PusherContext = createContext<PusherContextType>({
   connectionStatus: "connecting",
 })
 
-// Function to check if we're in a preview environment
-function isPreviewEnvironment() {
-  if (typeof window === "undefined") return false
-
-  const hostname = window.location.hostname
-
-  // Only consider localhost as preview
-  // Your production domain is babyjayceleaguechallenge.vercel.app
-  return (
-    hostname === "localhost" || (hostname.includes("vercel.app") && !hostname.startsWith("babyjayceleaguechallenge"))
-  )
-}
-
 export function PusherProvider({ children }: { children: React.ReactNode }) {
   const [gameChannel, setGameChannel] = useState<Channel | null>(null)
   const [pusherClient, setPusherClient] = useState<PusherClient | null>(null)
@@ -47,7 +34,6 @@ export function PusherProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let isMounted = true
-    const isPreviewEnv = isPreviewEnvironment()
 
     const initializePusher = async () => {
       try {
@@ -91,8 +77,8 @@ export function PusherProvider({ children }: { children: React.ReactNode }) {
               setIsConnected(false)
               setConnectionStatus("disconnected")
 
-              // Try to reconnect if not in preview mode
-              if (!isPreviewEnv && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+              // Try to reconnect
+              if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
                 scheduleReconnect()
               }
             }
@@ -104,16 +90,12 @@ export function PusherProvider({ children }: { children: React.ReactNode }) {
               setIsConnected(false)
               setConnectionStatus("error")
 
-              // Try to reconnect if not in preview mode
-              if (!isPreviewEnv && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+              // Try to reconnect
+              if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
                 scheduleReconnect()
               }
             }
           })
-        } else {
-          // This is our mock client for preview mode
-          console.log("[PUSHER] Using mock client (preview mode)")
-          setConnectionStatus("polling")
         }
 
         setGameChannel(channel)
@@ -133,7 +115,7 @@ export function PusherProvider({ children }: { children: React.ReactNode }) {
         if (isMounted) {
           setIsConnected(false)
           setIsLoading(false)
-          setConnectionStatus(isPreviewEnv ? "polling" : "error")
+          setConnectionStatus("error")
         }
       }
     }

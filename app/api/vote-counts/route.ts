@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase"
-import { checkRateLimit } from "@/lib/rate-limiter"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -8,17 +7,6 @@ export async function GET(request: Request) {
 
   if (!questionId) {
     return NextResponse.json({ error: "Question ID is required" }, { status: 400 })
-  }
-
-  // Apply rate limiting
-  const rateCheck = checkRateLimit(`vote-counts-${questionId}`, 15)
-  if (!rateCheck.allowed) {
-    return new Response("Too Many Requests", {
-      status: 429,
-      headers: {
-        "Retry-After": `${rateCheck.retryAfter || 10}`,
-      },
-    })
   }
 
   try {
@@ -30,7 +18,7 @@ export async function GET(request: Request) {
 
     if (optionsError) {
       console.error("Error fetching options:", optionsError)
-      throw optionsError
+      return NextResponse.json({ error: "Failed to fetch answer options" }, { status: 500 })
     }
 
     // Get all answers for this question
@@ -41,7 +29,7 @@ export async function GET(request: Request) {
 
     if (answersError) {
       console.error("Error fetching answers:", answersError)
-      throw answersError
+      return NextResponse.json({ error: "Failed to fetch answers" }, { status: 500 })
     }
 
     // Count votes for each option
@@ -62,12 +50,22 @@ export async function GET(request: Request) {
 
     console.log(`Vote counts for question ${questionId}:`, voteCounts, "Total votes:", answers.length)
 
-    return NextResponse.json({
-      voteCounts,
-      totalVotes: answers.length,
-      questionId: questionId,
-      timestamp: new Date().toISOString(),
-    })
+    return NextResponse.json(
+      {
+        voteCounts,
+        totalVotes: answers.length,
+        questionId: questionId,
+        timestamp: new Date().toISOString(),
+      },
+      {
+        headers: {
+          // Add cache control headers to prevent caching
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      },
+    )
   } catch (error) {
     console.error("Error fetching vote counts:", error)
     return NextResponse.json({ error: "Failed to fetch vote counts" }, { status: 500 })

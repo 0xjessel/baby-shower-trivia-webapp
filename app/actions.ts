@@ -140,17 +140,18 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
 
     if (insertError) throw insertError
 
-    // Broadcast the new custom answer via Pusher
+    // Create the custom answer object
     const customAnswer = {
       id: optionId,
       text: answerText.trim(),
       addedBy: participant.name,
     }
 
+    // Broadcast the new custom answer via Pusher
     try {
       await pusherServer.trigger(GAME_CHANNEL, EVENTS.CUSTOM_ANSWER_ADDED, {
         customAnswer,
-        questionId, // Include the questionId in the event
+        questionId,
       })
     } catch (pusherError) {
       console.error("Error triggering Pusher custom answer event:", pusherError)
@@ -283,19 +284,7 @@ export async function submitAnswer(questionId: string, answerText: string) {
   }
 
   try {
-    // Check if this participant has submitted an answer for this question recently
-    const key = `${participantId}-${questionId}`
-    const now = Date.now()
-    const lastSubmit = lastSubmitTime[key] || 0
-
-    // If last submit was less than 1 second ago, debounce the request
-    if (now - lastSubmit < 1000) {
-      console.log("[SERVER] Debouncing answer submit, too soon after last submit")
-      return { success: true, debounced: true }
-    }
-
-    // Update the last submit time
-    lastSubmitTime[key] = now
+    console.log(`[SERVER] Submitting answer for question ${questionId}: ${answerText}`)
 
     // Get the answer option ID
     const { data: answerOption, error: optionError } = await supabaseAdmin
@@ -359,9 +348,18 @@ export async function submitAnswer(questionId: string, answerText: string) {
 
     if (voteError) throw voteError
 
-    // Broadcast vote update via Pusher
+    // Broadcast vote update via Pusher with timestamp to ensure uniqueness
     try {
-      await pusherServer.trigger(GAME_CHANNEL, EVENTS.VOTE_UPDATE, voteData)
+      const timestamp = new Date().toISOString()
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.VOTE_UPDATE, {
+        voteCounts: voteData.voteCounts,
+        totalVotes: voteData.totalVotes,
+        questionId: questionId,
+        timestamp: timestamp,
+        source: "submitAnswer",
+      })
+
+      console.log(`[SERVER] Vote update broadcast at ${timestamp}:`, voteData.voteCounts)
     } catch (pusherError) {
       console.error("Error triggering Pusher vote update event:", pusherError)
       // Continue execution even if Pusher fails
@@ -409,7 +407,7 @@ async function getVoteCounts(questionId: string) {
       }
     })
 
-    console.log("Vote counts calculated:", voteCounts, "Total votes:", answers.length)
+    console.log(`[SERVER] Vote counts calculated for ${questionId}:`, voteCounts, "Total votes:", answers.length)
 
     return {
       data: {

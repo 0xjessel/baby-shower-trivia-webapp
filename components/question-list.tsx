@@ -42,14 +42,16 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
   const [customAnswers, setCustomAnswers] = useState<Record<string, CustomAnswer[]>>({})
   const [totalVotes, setTotalVotes] = useState<Record<string, number>>({})
   const [activePlayers, setActivePlayers] = useState(0)
-  const [activityTimeout, setActivityTimeout] = useState(120) // Default 2 minutes in seconds
-  const { gameChannel, isConnected } = usePusher()
+  const { gameChannel } = usePusher()
   const [localCurrentQuestionId, setLocalCurrentQuestionId] = useState<string | null>(currentQuestionId || null)
+  const lastVoteUpdateId = useRef<Record<string, string>>({})
   const fetchTimestamps = useRef<Record<string, number>>({})
+  const fetchInProgress = useRef<Record<string, boolean>>({})
 
   // Fetch questions
   useEffect(() => {
     fetchQuestions()
+    fetchActivePlayers() // Fetch once on component mount
   }, [])
 
   // Initialize all questions as expanded when questions are loaded
@@ -68,7 +70,34 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
     setLocalCurrentQuestionId(currentQuestionId || null)
   }, [currentQuestionId])
 
-  // Fetch vote counts ONLY for the active question
+  // Fetch active players count (just once, no polling)
+  const fetchActivePlayers = async () => {
+    try {
+      const res = await fetch("/api/online-players", {
+        headers: {
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        },
+      })
+
+      if (!res.ok) {
+        if (res.status === 429) {
+          console.log("[ADMIN] Active players fetch rate limited.")
+          return
+        }
+        throw new Error(`Server responded with status: ${res.status}`)
+      }
+
+      const data = await res.json()
+      if (data.count !== undefined) {
+        setActivePlayers(data.count)
+      }
+    } catch (err) {
+      console.error("Error fetching active players:", err)
+    }
+  }
+
+  // Fetch vote counts for the active question
   const fetchVoteCounts = useCallback(
     async (questionId: string, retryCount = 0) => {
       // Skip if this isn't the active question
@@ -77,10 +106,16 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
         return
       }
 
+      // Check if a fetch is already in progress for this question
+      const fetchKey = `votes-${questionId}`
+      if (fetchInProgress.current[fetchKey]) {
+        console.log(`[ADMIN] Fetch already in progress for question: ${questionId}`)
+        return
+      }
+
       // Add a simple cache to prevent duplicate fetches
-      const cacheKey = `votes-${questionId}`
       const now = Date.now()
-      const lastFetch = fetchTimestamps.current[cacheKey] || 0
+      const lastFetch = fetchTimestamps.current[fetchKey] || 0
       const timeSinceLastFetch = now - lastFetch
 
       // Only fetch if it's been at least 2 seconds since the last fetch
@@ -89,22 +124,33 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
         return
       }
 
-      // Update the timestamp
-      fetchTimestamps.current[cacheKey] = now
+      // Mark fetch as in progress
+      fetchInProgress.current[fetchKey] = true
 
       try {
         console.log(`[ADMIN] Fetching vote counts for active question: ${questionId}`)
-        const res = await fetch(`/api/vote-counts?questionId=${questionId}`)
+        const res = await fetch(`/api/vote-counts?questionId=${questionId}`, {
+          // Add cache control headers
+          headers: {
+            "Cache-Control": "no-cache",
+            Pragma: "no-cache",
+          },
+        })
 
         // Handle rate limiting
         if (res.status === 429) {
-          const retryAfter = res.headers.get("Retry-After") || Math.pow(2, retryCount) + 1
+          const retryAfter = Number.parseInt(res.headers.get("Retry-After") || "10", 10)
           console.log(`[ADMIN] Vote counts rate limited. Retrying after ${retryAfter} seconds.`)
 
           if (retryCount < 3) {
             setTimeout(() => fetchVoteCounts(questionId, retryCount + 1), retryAfter * 1000)
           }
+          fetchInProgress.current[fetchKey] = false
           return
+        }
+
+        if (!res.ok) {
+          throw new Error(`Server responded with status: ${res.status}`)
         }
 
         const data = await res.json()
@@ -112,23 +158,40 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
         if (data.voteCounts) {
           console.log("[ADMIN] Vote counts updated for active question:", data.voteCounts)
 
-          setVoteCounts((prev) => ({
-            ...prev,
-            [questionId]: data.voteCounts,
-          }))
-          setTotalVotes((prev) => ({
-            ...prev,
-            [questionId]: data.totalVotes,
-          }))
+          // Generate a unique ID for this update
+          const updateId = `${questionId}-${data.timestamp || Date.now()}`
+
+          // Only update if this is different from the last update we processed
+          if (updateId !== lastVoteUpdateId.current[questionId]) {
+            setVoteCounts((prev) => ({
+              ...prev,
+              [questionId]: data.voteCounts,
+            }))
+            setTotalVotes((prev) => ({
+              ...prev,
+              [questionId]: data.totalVotes,
+            }))
+            lastVoteUpdateId.current[questionId] = updateId
+
+            // Update the timestamp after successful fetch
+            fetchTimestamps.current[fetchKey] = now
+          }
         }
       } catch (err) {
         console.error(`Error fetching vote counts for question ${questionId}:`, err)
+        // If there's an error, we'll try again after a short delay (but not too often)
+        if (retryCount < 3) {
+          setTimeout(() => fetchVoteCounts(questionId, retryCount + 1), 5000)
+        }
+      } finally {
+        // Mark fetch as complete
+        fetchInProgress.current[fetchKey] = false
       }
     },
     [localCurrentQuestionId],
   )
 
-  // Fetch custom answers ONLY for the active question
+  // Fetch custom answers for the active question
   const fetchCustomAnswers = useCallback(
     async (questionId: string, retryCount = 0) => {
       // Skip if this isn't the active question
@@ -137,10 +200,16 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
         return
       }
 
+      // Check if a fetch is already in progress for this question
+      const fetchKey = `customAnswers-${questionId}`
+      if (fetchInProgress.current[fetchKey]) {
+        console.log(`[ADMIN] Custom answers fetch already in progress for question: ${questionId}`)
+        return
+      }
+
       // Add a simple cache to prevent duplicate fetches
-      const cacheKey = `customAnswers-${questionId}`
       const now = Date.now()
-      const lastFetch = fetchTimestamps.current[cacheKey] || 0
+      const lastFetch = fetchTimestamps.current[fetchKey] || 0
       const timeSinceLastFetch = now - lastFetch
 
       // Only fetch if it's been at least 2 seconds since the last fetch
@@ -149,22 +218,33 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
         return
       }
 
-      // Update the timestamp
-      fetchTimestamps.current[cacheKey] = now
+      // Mark fetch as in progress
+      fetchInProgress.current[fetchKey] = true
 
       try {
         console.log(`[ADMIN] Fetching custom answers for active question: ${questionId}`)
-        const res = await fetch(`/api/custom-answers?questionId=${questionId}`)
+        const res = await fetch(`/api/custom-answers?questionId=${questionId}`, {
+          // Add cache control headers
+          headers: {
+            "Cache-Control": "no-cache",
+            Pragma: "no-cache",
+          },
+        })
 
         // Handle rate limiting
         if (res.status === 429) {
-          const retryAfter = res.headers.get("Retry-After") || Math.pow(2, retryCount) + 1
+          const retryAfter = Number.parseInt(res.headers.get("Retry-After") || "10", 10)
           console.log(`[ADMIN] Custom answers rate limited. Retrying after ${retryAfter} seconds.`)
 
           if (retryCount < 3) {
             setTimeout(() => fetchCustomAnswers(questionId, retryCount + 1), retryAfter * 1000)
           }
+          fetchInProgress.current[fetchKey] = false
           return
+        }
+
+        if (!res.ok) {
+          throw new Error(`Server responded with status: ${res.status}`)
         }
 
         const data = await res.json()
@@ -182,9 +262,19 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
           if (data.customAnswers.length > currentCustomAnswers.length) {
             fetchVoteCounts(questionId)
           }
+
+          // Update the timestamp after successful fetch
+          fetchTimestamps.current[fetchKey] = now
         }
       } catch (err) {
         console.error(`Error fetching custom answers for question ${questionId}:`, err)
+        // If there's an error, we'll try again after a short delay (but not too often)
+        if (retryCount < 3) {
+          setTimeout(() => fetchCustomAnswers(questionId, retryCount + 1), 5000)
+        }
+      } finally {
+        // Mark fetch as complete
+        fetchInProgress.current[fetchKey] = false
       }
     },
     [localCurrentQuestionId, customAnswers, fetchVoteCounts],
@@ -201,14 +291,21 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
         if (data.questionId === localCurrentQuestionId) {
           console.log("[ADMIN] Real-time vote update received via Pusher for active question:", data.totalVotes)
 
-          setVoteCounts((prev) => ({
-            ...prev,
-            [data.questionId]: data.voteCounts,
-          }))
-          setTotalVotes((prev) => ({
-            ...prev,
-            [data.questionId]: data.totalVotes,
-          }))
+          // Generate a unique ID for this update
+          const updateId = `${data.questionId}-${data.timestamp || Date.now()}`
+
+          // Only update if this is different from the last update we processed
+          if (updateId !== lastVoteUpdateId.current[data.questionId]) {
+            setVoteCounts((prev) => ({
+              ...prev,
+              [data.questionId]: data.voteCounts,
+            }))
+            setTotalVotes((prev) => ({
+              ...prev,
+              [data.questionId]: data.totalVotes,
+            }))
+            lastVoteUpdateId.current[data.questionId] = updateId
+          }
         }
       }
     })
@@ -246,91 +343,32 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
     }
   }, [gameChannel, localCurrentQuestionId, fetchVoteCounts])
 
-  // Modify the active players polling to be less frequent
-  useEffect(() => {
-    const fetchActivePlayers = async () => {
-      try {
-        const res = await fetch("/api/online-players")
-
-        // Handle rate limiting
-        if (res.status === 429) {
-          console.log("[ADMIN] Active players fetch rate limited. Will retry on next interval.")
-          return
-        }
-
-        const data = await res.json()
-        if (data.count !== undefined) {
-          setActivePlayers(data.count)
-        }
-        if (data.activeTimeout) {
-          setActivityTimeout(data.activeTimeout)
-        }
-      } catch (err) {
-        console.error("Error fetching active players:", err)
-      }
-    }
-
-    fetchActivePlayers()
-    // Increase polling interval to 15s
-    const interval = setInterval(fetchActivePlayers, 15000)
-
-    return () => clearInterval(interval)
-  }, [])
-
-  // Add real-time updates for the active question - only poll if Pusher is not connected
+  // Add real-time updates for the active question - initial fetch only, no polling
   useEffect(() => {
     // Only proceed if we have an active question
     if (!localCurrentQuestionId) return
 
-    // Track the current active question to handle cleanup properly
-    const currentActiveQuestion = localCurrentQuestionId
-
     // Always fetch data once immediately when the active question changes
-    console.log("[ADMIN] Initial fetch for active question:", currentActiveQuestion)
-    fetchVoteCounts(currentActiveQuestion)
-    fetchCustomAnswers(currentActiveQuestion)
-
-    // Only set up polling interval if Pusher is not connected
-    let activeQuestionInterval: NodeJS.Timeout | null = null
-
-    if (!isConnected) {
-      console.log("[ADMIN] Pusher not connected, setting up polling for active question:", currentActiveQuestion)
-
-      // Increase polling interval to reduce API calls (from 5s to 8s)
-      activeQuestionInterval = setInterval(() => {
-        // Double-check that this is still the active question before fetching
-        if (currentActiveQuestion === localCurrentQuestionId) {
-          console.log("[ADMIN] Polling for active question data (Pusher not connected)")
-          fetchVoteCounts(currentActiveQuestion)
-          fetchCustomAnswers(currentActiveQuestion)
-        } else {
-          // The active question has changed, clear this interval
-          if (activeQuestionInterval) {
-            clearInterval(activeQuestionInterval)
-          }
-        }
-      }, 8000) // Poll every 8 seconds
-    } else {
-      console.log("[ADMIN] Pusher connected, relying on real-time updates for active question:", currentActiveQuestion)
-    }
-
-    return () => {
-      if (activeQuestionInterval) {
-        console.log("[ADMIN] Cleaning up polling for question:", currentActiveQuestion)
-        clearInterval(activeQuestionInterval)
-      }
-    }
-  }, [localCurrentQuestionId, isConnected])
+    console.log("[ADMIN] Initial fetch for active question:", localCurrentQuestionId)
+    fetchVoteCounts(localCurrentQuestionId)
+    fetchCustomAnswers(localCurrentQuestionId)
+  }, [localCurrentQuestionId, fetchVoteCounts, fetchCustomAnswers])
 
   // Fetch questions with retry logic
   const fetchQuestions = async (retryCount = 0) => {
     setIsLoading(true)
     try {
-      const response = await fetch("/api/questions")
+      const response = await fetch("/api/questions", {
+        // Add cache control headers
+        headers: {
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        },
+      })
 
       // Check if we hit a rate limit
       if (response.status === 429) {
-        const retryAfter = response.headers.get("Retry-After") || Math.pow(2, retryCount) + 1
+        const retryAfter = Number.parseInt(response.headers.get("Retry-After") || "10", 10)
         console.log(`[ADMIN] Rate limited. Retrying after ${retryAfter} seconds.`)
 
         // Wait and retry with exponential backoff
@@ -341,6 +379,10 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
         }
         setIsLoading(false)
         return
+      }
+
+      if (!response.ok) {
+        throw new Error(`Server responded with status: ${response.status}`)
       }
 
       const data = await response.json()
@@ -356,7 +398,7 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
       }
     } catch (err) {
       console.error("Error fetching questions:", err)
-      setError("Failed to load questions")
+      setError("Failed to load questions. Please try refreshing the page.")
     } finally {
       setIsLoading(false)
     }
@@ -404,6 +446,15 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
     }
   }
 
+  const handleRetry = () => {
+    setError("")
+    fetchQuestions()
+    if (localCurrentQuestionId) {
+      fetchVoteCounts(localCurrentQuestionId)
+      fetchCustomAnswers(localCurrentQuestionId)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="text-center py-8">
@@ -418,7 +469,7 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
       <div className="rounded-md bg-red-900/20 p-4 text-center text-red-400 border border-red-500/50">
         {error}
         <Button
-          onClick={fetchQuestions}
+          onClick={handleRetry}
           variant="outline"
           size="sm"
           className="mt-2 border-arcane-blue text-arcane-blue hover:bg-arcane-blue/10"
