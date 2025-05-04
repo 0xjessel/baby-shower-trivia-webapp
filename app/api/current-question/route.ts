@@ -10,8 +10,8 @@ let cache = {
   questionId: null,
 }
 
-// Cache TTL in milliseconds (reduced to 1 second to improve synchronization)
-const CACHE_TTL = 1000
+// Cache TTL in milliseconds (2 seconds)
+const CACHE_TTL = 2000
 
 export async function GET() {
   try {
@@ -36,40 +36,27 @@ export async function GET() {
       .eq("is_active", true)
       .single()
 
-    let game
-
     if (gameError) {
-      // Fall back to the "current" game for backward compatibility
-      const { data: fallbackGame, error: fallbackError } = await supabaseAdmin
-        .from("games")
-        .select("current_question_id, status")
-        .eq("id", "current")
-        .maybeSingle()
-
-      if (fallbackError) {
-        console.error("Error fetching game state:", fallbackError)
-        return NextResponse.json({ error: "Failed to fetch game state" }, { status: 500 })
-      }
-
-      game = fallbackGame
-    } else {
-      game = activeGame
+      console.error("Error fetching active game:", gameError)
+      return NextResponse.json({ error: "Failed to fetch game state" }, { status: 500 })
     }
 
-    // If there's no active question or game is in waiting state
-    if (!game || !game.current_question_id || game.status !== "active") {
-      // Clear cache when in waiting state
-      cache = {
-        data: null,
-        timestamp: 0,
-        questionId: null,
-      }
-      return NextResponse.json({ waiting: true, gameStatus: game?.status || "waiting" })
+    // If there's no active game or no active question
+    if (!activeGame || !activeGame.current_question_id || activeGame.status !== "active") {
+      return NextResponse.json({ waiting: true, gameStatus: activeGame?.status || "waiting" })
     }
 
-    // Check if we can use cached data - but only if the question ID matches
+    // Add debugging to help diagnose the issue
+    console.log("[CURRENT-QUESTION] Game state:", {
+      gameId: activeGame.id,
+      currentQuestionId: activeGame.current_question_id,
+      status: activeGame.status,
+      isActive: !!activeGame.current_question_id && activeGame.status === "active",
+    })
+
+    // Check if we can use cached data
     const now = Date.now()
-    if (cache.data && cache.timestamp > now - CACHE_TTL && cache.questionId === game.current_question_id) {
+    if (cache.data && cache.timestamp > now - CACHE_TTL && cache.questionId === activeGame.current_question_id) {
       // Add participant-specific data to cached response
       const cachedData = { ...cache.data }
 
@@ -78,7 +65,7 @@ export async function GET() {
         .from("answers")
         .select("answer_option_id")
         .eq("participant_id", participantId)
-        .eq("question_id", game.current_question_id)
+        .eq("question_id", activeGame.current_question_id)
         .maybeSingle()
 
       if (answerError) {
@@ -103,7 +90,7 @@ export async function GET() {
         ...cachedData,
         answered: answer ? true : false,
         selectedAnswer,
-        gameStatus: game.status,
+        gameStatus: activeGame.status,
       })
     }
 
@@ -129,7 +116,7 @@ export async function GET() {
         const response = await supabaseAdmin
           .from("questions")
           .select("id, type, question, image_url, options, allows_custom_answers")
-          .eq("id", game.current_question_id)
+          .eq("id", activeGame.current_question_id)
           .single()
 
         question = response.data
@@ -232,7 +219,7 @@ export async function GET() {
 
     return NextResponse.json({
       ...responseData,
-      gameStatus: game.status,
+      gameStatus: activeGame.status,
       answered: answer ? true : false,
       selectedAnswer,
     })

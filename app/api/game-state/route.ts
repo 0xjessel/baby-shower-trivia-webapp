@@ -18,24 +18,15 @@ export async function GET() {
       .single()
 
     if (gameError) {
-      throw gameError
+      console.error("Error fetching active game:", gameError)
+      return NextResponse.json({ error: "Failed to fetch game state" }, { status: 500 })
     }
 
-    // If no active game, fall back to the "current" game for backward compatibility
     if (!activeGame) {
-      const { data: fallbackGame, error: fallbackError } = await supabaseAdmin
-        .from("games")
-        .select("current_question_id, status")
-        .eq("id", "current")
-        .maybeSingle()
-
-      if (fallbackError) {
-        throw fallbackError
-      }
-
       return NextResponse.json({
-        currentQuestionId: fallbackGame?.current_question_id || null,
-        status: fallbackGame?.status || "waiting",
+        currentQuestionId: null,
+        status: "waiting",
+        gameId: null,
       })
     }
 

@@ -1,9 +1,9 @@
-import { createClient } from "@supabase/supabase-js"
+import { createClient as supabaseCreateClient } from "@supabase/supabase-js"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
 
-export const supabaseAdmin = createClient(supabaseUrl, supabaseKey, {
+export const supabaseAdmin = supabaseCreateClient(supabaseUrl, supabaseKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false,
@@ -44,3 +44,5 @@ export async function getSignedUrl(path: string): Promise<string> {
     return ""
   }
 }
+
+export const createClient = supabaseCreateClient

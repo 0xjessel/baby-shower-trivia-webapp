@@ -31,10 +31,15 @@ export async function GET() {
       .single()
 
     if (gameError) {
-      throw gameError
+      console.error("Error fetching active game:", gameError)
+      return NextResponse.json({ error: "No active game found" }, { status: 404 })
     }
 
-    const activeGameId = activeGame?.id || "current"
+    const activeGameId = activeGame?.id
+
+    if (!activeGameId) {
+      return NextResponse.json({ questions: [] })
+    }
 
     // Get all questions for the active game
     const { data: questions, error } = await supabaseAdmin

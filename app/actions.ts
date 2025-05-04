@@ -64,7 +64,7 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
   const participantId = cookies().get("participantId")?.value
 
   if (!participantId) {
-    return { success: false, error: "Not authenticated" }
+    redirect("/join")
   }
 
   try {
@@ -463,6 +463,54 @@ async function getVoteCounts(questionId: string) {
   }
 }
 
+// Helper function to populate answer options
+async function populateAnswerOptions(questionId: string, options: string[]) {
+  if (!options || options.length === 0) {
+    console.log("[SERVER] No options to populate for question:", questionId)
+    return
+  }
+
+  try {
+    // First, check if options already exist for this question
+    const { data: existingOptions, error: existingOptionsError } = await supabaseAdmin
+      .from("answer_options")
+      .select("id")
+      .eq("question_id", questionId)
+
+    if (existingOptionsError) {
+      console.error("Error checking existing options:", existingOptionsError)
+      throw existingOptionsError
+    }
+
+    // If options already exist, skip population
+    if (existingOptions && existingOptions.length > 0) {
+      console.log("[SERVER] Options already exist for question:", questionId, "- skipping population")
+      return
+    }
+
+    // Prepare the options to be inserted
+    const newOptions = options.map((option) => ({
+      id: generateUUID(),
+      question_id: questionId,
+      text: option.trim(),
+      is_custom: false,
+    }))
+
+    // Insert the new options
+    const { error: insertError } = await supabaseAdmin.from("answer_options").insert(newOptions)
+
+    if (insertError) {
+      console.error("Error inserting answer options:", insertError)
+      throw insertError
+    }
+
+    console.log("[SERVER] Successfully populated answer options for question:", questionId)
+  } catch (error) {
+    console.error("Error populating answer options:", error)
+    throw error
+  }
+}
+
 // Move to next question
 export async function nextQuestion() {
   // Check if admin
@@ -472,10 +520,22 @@ export async function nextQuestion() {
   }
 
   try {
-    // Get all questions
+    // Get the active game
+    const { data: activeGame, error: gameError } = await supabaseAdmin
+      .from("games")
+      .select("id, current_question_id")
+      .eq("is_active", true)
+      .single()
+
+    if (gameError || !activeGame) {
+      return { success: false, error: "No active game found" }
+    }
+
+    // Get all questions for this game
     const { data: questions, error: questionsError } = await supabaseAdmin
       .from("questions")
       .select("id")
+      .eq("game_id", activeGame.id)
       .order("created_at", { ascending: true })
 
     if (questionsError) throw questionsError
@@ -484,46 +544,26 @@ export async function nextQuestion() {
       return { success: false, error: "No questions available" }
     }
 
-    // Get current game state
-    const { data: game, error: gameError } = await supabaseAdmin
-      .from("games")
-      .select("*")
-      .eq("id", "current")
-      .maybeSingle()
-
-    if (gameError) throw gameError
-
     let currentIndex = 0
 
-    if (game) {
-      if (game.current_question_id) {
-        // Find the index of the current question
-        const currentQuestionIndex = questions.findIndex((q) => q.id === game.current_question_id)
-        if (currentQuestionIndex !== -1) {
-          currentIndex = (currentQuestionIndex + 1) % questions.length
-        }
+    if (activeGame.current_question_id) {
+      // Find the index of the current question
+      const currentQuestionIndex = questions.findIndex((q) => q.id === activeGame.current_question_id)
+      if (currentQuestionIndex !== -1) {
+        currentIndex = (currentQuestionIndex + 1) % questions.length
       }
+    }
 
-      // Update the game with the next question
-      const { error: updateError } = await supabaseAdmin
-        .from("games")
-        .update({
-          current_question_id: questions[currentIndex].id,
-          status: "active",
-        })
-        .eq("id", "current")
-
-      if (updateError) throw updateError
-    } else {
-      // Create a new game
-      const { error: insertError } = await supabaseAdmin.from("games").insert({
-        id: "current",
-        current_question_id: questions[0].id,
+    // Update the game with the next question
+    const { error: updateError } = await supabaseAdmin
+      .from("games")
+      .update({
+        current_question_id: questions[currentIndex].id,
         status: "active",
       })
+      .eq("id", activeGame.id)
 
-      if (insertError) throw insertError
-    }
+    if (updateError) throw updateError
 
     // Get the full question details to send to clients
     const { data: questionDetails, error: detailsError } = await supabaseAdmin
@@ -569,43 +609,6 @@ export async function nextQuestion() {
   }
 }
 
-// Helper function to populate answer options
-async function populateAnswerOptions(questionId: string, options: string[]) {
-  try {
-    // First, check which options already exist
-    const { data: existingOptions, error: checkError } = await supabaseAdmin
-      .from("answer_options")
-      .select("text")
-      .eq("question_id", questionId)
-      .eq("is_custom", false)
-
-    if (checkError) throw checkError
-
-    // Filter out options that already exist
-    const existingTexts = existingOptions.map((o) => o.text)
-    const newOptions = options.filter((o) => !existingTexts.includes(o))
-
-    // If there are new options, insert them
-    if (newOptions.length > 0) {
-      const optionsToInsert = newOptions.map((text) => ({
-        id: generateUUID(),
-        question_id: questionId,
-        text: text,
-        is_custom: false,
-      }))
-
-      const { error: insertError } = await supabaseAdmin.from("answer_options").insert(optionsToInsert)
-
-      if (insertError) throw insertError
-    }
-
-    return { success: true }
-  } catch (error) {
-    console.error("Error populating answer options:", error)
-    return { success: false, error: "Failed to populate answer options" }
-  }
-}
-
 // Go back to previous question
 export async function previousQuestion() {
   // Check if admin
@@ -615,10 +618,22 @@ export async function previousQuestion() {
   }
 
   try {
-    // Get all questions
+    // Get the active game
+    const { data: activeGame, error: gameError } = await supabaseAdmin
+      .from("games")
+      .select("id, current_question_id")
+      .eq("is_active", true)
+      .single()
+
+    if (gameError || !activeGame) {
+      return { success: false, error: "No active game found" }
+    }
+
+    // Get all questions for this game
     const { data: questions, error: questionsError } = await supabaseAdmin
       .from("questions")
       .select("id")
+      .eq("game_id", activeGame.id)
       .order("created_at", { ascending: true })
 
     if (questionsError) throw questionsError
@@ -627,21 +642,12 @@ export async function previousQuestion() {
       return { success: false, error: "No questions available" }
     }
 
-    // Get current game state
-    const { data: game, error: gameError } = await supabaseAdmin
-      .from("games")
-      .select("*")
-      .eq("id", "current")
-      .maybeSingle()
-
-    if (gameError) throw gameError
-
-    if (!game || !game.current_question_id) {
+    if (!activeGame.current_question_id) {
       return { success: false, error: "No active question to go back from" }
     }
 
     // Find the index of the current question
-    const currentQuestionIndex = questions.findIndex((q) => q.id === game.current_question_id)
+    const currentQuestionIndex = questions.findIndex((q) => q.id === activeGame.current_question_id)
     if (currentQuestionIndex === -1) {
       return { success: false, error: "Current question not found" }
     }
@@ -656,14 +662,14 @@ export async function previousQuestion() {
         current_question_id: questions[previousIndex].id,
         status: "active",
       })
-      .eq("id", "current")
+      .eq("id", activeGame.id)
 
     if (updateError) throw updateError
 
     // Get the full question details to send to clients
     const { data: questionDetails, error: detailsError } = await supabaseAdmin
       .from("questions")
-      .select("id, type, question, image_url, options")
+      .select("id, type, question, image_url, options, allows_custom_answers")
       .eq("id", questions[previousIndex].id)
       .single()
 
@@ -678,7 +684,9 @@ export async function previousQuestion() {
           question: questionDetails.question,
           imageUrl: questionDetails.image_url,
           options: questionDetails.options,
+          allowsCustomAnswers: questionDetails.allows_custom_answers,
         },
+        timestamp: Date.now(),
       })
     } catch (pusherError) {
       console.error("Error triggering Pusher event:", pusherError)
@@ -701,8 +709,19 @@ export async function showResults() {
   }
 
   try {
+    // Get the active game
+    const { data: activeGame, error: gameError } = await supabaseAdmin
+      .from("games")
+      .select("id")
+      .eq("is_active", true)
+      .single()
+
+    if (gameError || !activeGame) {
+      return { success: false, error: "No active game found" }
+    }
+
     // Update game status to show results
-    const { error } = await supabaseAdmin.from("games").update({ status: "results" }).eq("id", "current")
+    const { error } = await supabaseAdmin.from("games").update({ status: "results" }).eq("id", activeGame.id)
 
     if (error) {
       console.error("Database error when updating game status:", error)
@@ -713,7 +732,7 @@ export async function showResults() {
     const { data: game, error: verifyError } = await supabaseAdmin
       .from("games")
       .select("status")
-      .eq("id", "current")
+      .eq("id", activeGame.id)
       .single()
 
     if (verifyError) {
@@ -739,7 +758,6 @@ export async function showResults() {
   }
 }
 
-// Reset the game
 // Reset all games
 export async function resetGame() {
   // Check if admin
@@ -936,17 +954,17 @@ export async function resetVotes() {
     // Trigger Pusher event to notify all clients about vote updates
     try {
       // For each active question, broadcast an empty vote count
-      const { data: game } = await supabaseAdmin
+      const { data: activeGame } = await supabaseAdmin
         .from("games")
         .select("current_question_id")
-        .eq("id", "current")
-        .maybeSingle()
+        .eq("is_active", true)
+        .single()
 
-      if (game?.current_question_id) {
+      if (activeGame?.current_question_id) {
         await pusherServer.trigger(GAME_CHANNEL, EVENTS.VOTE_UPDATE, {
           voteCounts: {},
           totalVotes: 0,
-          questionId: game.current_question_id,
+          questionId: activeGame.current_question_id,
           timestamp: new Date().toISOString(),
           source: "resetVotes",
         })
@@ -1108,7 +1126,7 @@ export async function deleteQuestion(id: string) {
     // Get the question to check if it has an image
     const { data: question, error: getError } = await supabaseAdmin
       .from("questions")
-      .select("image_url")
+      .select("image_url, game_id")
       .eq("id", id)
       .single()
 
@@ -1153,16 +1171,16 @@ export async function deleteQuestion(id: string) {
       // Continue even if custom answer deletion fails
     }
 
-    // Check if this was the current question and update game state if needed
-    const { data: game, error: gameError } = await supabaseAdmin
+    // Check if this was the current question in the active game and update game state if needed
+    const { data: activeGame, error: gameError } = await supabaseAdmin
       .from("games")
-      .select("current_question_id")
-      .eq("id", "current")
-      .maybeSingle()
+      .select("id, current_question_id")
+      .eq("is_active", true)
+      .single()
 
-    if (!gameError && game && game.current_question_id === id) {
+    if (!gameError && activeGame && activeGame.current_question_id === id) {
       // This was the current question, set to null
-      await supabaseAdmin.from("games").update({ current_question_id: null }).eq("id", "current")
+      await supabaseAdmin.from("games").update({ current_question_id: null }).eq("id", activeGame.id)
     }
 
     revalidatePath("/admin/dashboard")
@@ -1183,16 +1201,33 @@ export async function setActiveQuestion(questionId: string) {
   }
 
   try {
-    // Update the game with the specified question
+    // Get the active game
+    const { data: activeGame, error: activeGameError } = await supabaseAdmin
+      .from("games")
+      .select("id")
+      .eq("is_active", true)
+      .single()
+
+    if (activeGameError || !activeGame) {
+      return { success: false, error: "No active game found" }
+    }
+
+    // Update the active game with the specified question
     const { error: updateError } = await supabaseAdmin
       .from("games")
       .update({
         current_question_id: questionId,
-        status: "active",
+        status: "active", // Ensure status is set to active
       })
-      .eq("id", "current")
+      .eq("id", activeGame.id)
 
     if (updateError) throw updateError
+
+    // Log the state after updates for debugging
+    console.log("[SERVER] Question set as active:", {
+      questionId,
+      activeGameId: activeGame.id,
+    })
 
     // Get the full question details to send to clients
     const { data: questionDetails, error: detailsError } = await supabaseAdmin
@@ -1206,9 +1241,6 @@ export async function setActiveQuestion(questionId: string) {
     // When moving to a new question, we need to pre-populate the answer_options table
     // with the predefined options from the question
     await populateAnswerOptions(questionDetails.id, questionDetails.options)
-
-    // Add a small delay before triggering the Pusher event to ensure database updates are complete
-    await new Promise((resolve) => setTimeout(resolve, 200))
 
     // Trigger Pusher event to notify all clients
     try {
@@ -1291,26 +1323,6 @@ export async function setActiveGame(gameId: string) {
     const { error } = await supabaseAdmin.from("games").update({ is_active: true }).eq("id", gameId)
 
     if (error) throw error
-
-    // Also update the "current" game for backward compatibility
-    const { data: gameData, error: gameError } = await supabaseAdmin
-      .from("games")
-      .select("current_question_id, status")
-      .eq("id", gameId)
-      .single()
-
-    if (gameError) throw gameError
-
-    // Update the "current" game entry
-    const { error: currentError } = await supabaseAdmin
-      .from("games")
-      .update({
-        current_question_id: gameData.current_question_id,
-        status: gameData.status,
-      })
-      .eq("id", "current")
-
-    if (currentError) throw currentError
 
     // Trigger Pusher event to notify all clients about the game change
     try {

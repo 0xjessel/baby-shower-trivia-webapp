@@ -18,7 +18,7 @@ export default function HomePage() {
           <p className="mt-2 text-lg text-arcane-gray">Where Piltover Smarts Meet Baby Shower Fun.</p>
         </div>
 
-        <Card className="border-2 border-arcane-blue bg-arcane-navy/80 shadow-md">
+        <Card className="border-2 border-arcane-blue bg-arcane-navy/80 shadow-md hextech-border">
           <CardContent className="pt-6">
             <div className="flex flex-col items-center space-y-6">
               <div className="text-center">
@@ -38,12 +38,14 @@ export default function HomePage() {
 
         <div className="flex justify-center space-x-4">
           <Link href="/join" passHref>
-            <Button className="bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold">Join as Guest</Button>
+            <Button className="bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold hextech-border">
+              Join as Guest
+            </Button>
           </Link>
           <Link href="/admin" passHref>
             <Button
               variant="outline"
-              className="border-arcane-gold text-arcane-gold hover:bg-arcane-gold/10 font-medium"
+              className="border-arcane-gold text-arcane-gold hover:bg-arcane-gold/10 font-medium hextech-border"
             >
               Admin Login
             </Button>
