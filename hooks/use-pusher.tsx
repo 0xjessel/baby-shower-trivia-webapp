@@ -62,6 +62,18 @@ export function PusherProvider({ children }: { children: React.ReactNode }) {
         console.log("[PUSHER] Subscribing to game channel...")
         const channel = client.subscribe(GAME_CHANNEL)
 
+        // Set up Pusher event listeners
+        channel.bind("pusher:subscription_succeeded", () => {
+          console.log("[PUSHER] Successfully subscribed to game channel")
+          setIsConnected(true)
+          setConnectionStatus("connected")
+        })
+
+        channel.bind("pusher:subscription_error", (error: any) => {
+          console.error("[PUSHER] Error subscribing to game channel:", error)
+          setConnectionStatus("error")
+        })
+
         // Add connection status event listeners if this is a real Pusher client
         if ("connection" in client) {
           client.connection.bind("connected", () => {
@@ -150,6 +162,10 @@ export function PusherProvider({ children }: { children: React.ReactNode }) {
         if ("disconnect" in pusherClient) {
           pusherClient.disconnect()
         }
+      }
+      if (gameChannel) {
+        gameChannel.unbind("pusher:subscription_succeeded")
+        gameChannel.unbind("pusher:subscription_error")
       }
     }
 

@@ -501,7 +501,10 @@ export async function nextQuestion() {
 
     // Trigger Pusher event to notify all clients
     try {
-      await pusherServer.trigger(GAME_CHANNEL, EVENTS.QUESTION_UPDATE, {
+      console.log("[SERVER] Triggering QUESTION_UPDATE event via Pusher for question:", questionDetails.id)
+
+      // Add a timestamp to ensure clients recognize this as a new event
+      const eventData = {
         question: {
           id: questionDetails.id,
           type: questionDetails.type,
@@ -510,7 +513,11 @@ export async function nextQuestion() {
           options: questionDetails.options,
           allowsCustomAnswers: questionDetails.allows_custom_answers,
         },
-      })
+        timestamp: Date.now(),
+      }
+
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.QUESTION_UPDATE, eventData)
+      console.log("[SERVER] Successfully triggered QUESTION_UPDATE event")
     } catch (pusherError) {
       console.error("Error triggering Pusher event:", pusherError)
       // Continue execution even if Pusher fails
@@ -965,7 +972,10 @@ export async function setActiveQuestion(questionId: string) {
 
     // Trigger Pusher event to notify all clients
     try {
-      await pusherServer.trigger(GAME_CHANNEL, EVENTS.QUESTION_UPDATE, {
+      console.log("[SERVER] Triggering QUESTION_UPDATE event via Pusher for question:", questionDetails.id)
+
+      // Add a timestamp to ensure clients recognize this as a new event
+      const eventData = {
         question: {
           id: questionDetails.id,
           type: questionDetails.type,
@@ -974,7 +984,11 @@ export async function setActiveQuestion(questionId: string) {
           options: questionDetails.options,
           allowsCustomAnswers: questionDetails.allows_custom_answers,
         },
-      })
+        timestamp: Date.now(),
+      }
+
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.QUESTION_UPDATE, eventData)
+      console.log("[SERVER] Successfully triggered QUESTION_UPDATE event")
     } catch (pusherError) {
       console.error("Error triggering Pusher event:", pusherError)
       // Continue execution even if Pusher fails

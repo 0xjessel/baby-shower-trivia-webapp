@@ -2,12 +2,24 @@ import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
 // Import the getSignedUrl function
 import { supabaseAdmin, getSignedUrl } from "@/lib/supabase"
+import { checkRateLimit } from "@/lib/rate-limiter"
 
 export async function GET() {
   // Check if admin is authenticated
   const adminToken = cookies().get("adminToken")?.value
   if (!adminToken) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  // Apply rate limiting
+  const rateCheck = checkRateLimit(`admin-questions-${adminToken.substring(0, 8)}`, 20)
+  if (!rateCheck.allowed) {
+    return new Response("Too Many Requests", {
+      status: 429,
+      headers: {
+        "Retry-After": `${rateCheck.retryAfter || 10}`,
+      },
+    })
   }
 
   try {
@@ -20,9 +32,6 @@ export async function GET() {
     if (error) {
       throw error
     }
-
-    // In the GET function, modify the part where questions are formatted
-    // Around line 20-30
 
     // Format the questions for the frontend
     const formattedQuestions = await Promise.all(
@@ -40,6 +49,7 @@ export async function GET() {
           imageUrl: imageUrl,
           options: q.options,
           correctAnswer: q.correct_answer,
+          allowsCustomAnswers: q.allows_custom_answers,
         }
       }),
     )

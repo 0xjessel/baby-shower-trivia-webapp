@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase"
+import { checkRateLimit } from "@/lib/rate-limiter"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -7,6 +8,17 @@ export async function GET(request: Request) {
 
   if (!questionId) {
     return NextResponse.json({ error: "Question ID is required" }, { status: 400 })
+  }
+
+  // Apply rate limiting
+  const rateCheck = checkRateLimit(`vote-counts-${questionId}`, 15)
+  if (!rateCheck.allowed) {
+    return new Response("Too Many Requests", {
+      status: 429,
+      headers: {
+        "Retry-After": `${rateCheck.retryAfter || 10}`,
+      },
+    })
   }
 
   try {

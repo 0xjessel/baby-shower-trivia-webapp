@@ -132,6 +132,22 @@ export async function createPusherClient() {
         timeout: 15000, // Increase timeout to 15 seconds
         pongTimeout: 10000, // Increase pong timeout to 10 seconds
         activityTimeout: 30000, // Increase activity timeout to 30 seconds
+        retryAfter: 1000, // Retry after 1 second on connection failure
+        autoReconnect: true, // Ensure auto reconnect is enabled
+      })
+
+      // Add more detailed connection event listeners
+      client.connection.bind("state_change", (states) => {
+        console.log(`[PusherClient] Connection state changed from ${states.previous} to ${states.current}`)
+      })
+
+      client.connection.bind("error", (err) => {
+        console.error("[PusherClient] Connection error:", err)
+        // Try to reconnect immediately on error
+        if (client.connection.state !== "connected" && client.connection.state !== "connecting") {
+          console.log("[PusherClient] Attempting to reconnect after error...")
+          client.connect()
+        }
       })
 
       // Add connection event listeners for better debugging
@@ -142,10 +158,6 @@ export async function createPusherClient() {
 
       client.connection.bind("disconnected", () => {
         console.log("[PusherClient] Disconnected from Pusher")
-      })
-
-      client.connection.bind("error", (err: any) => {
-        console.error("[PusherClient] Connection error:", err)
       })
 
       return client

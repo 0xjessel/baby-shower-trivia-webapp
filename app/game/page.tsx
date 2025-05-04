@@ -395,29 +395,45 @@ export default function GamePage() {
     }
 
     // Set up Pusher event listeners
-    gameChannel.bind(EVENTS.QUESTION_UPDATE, (data: { question: Question }) => {
-      console.log("[DEBUG] Received question update via Pusher:", data.question.id)
-      setCurrentQuestion(data.question)
-      setSelectedAnswer("")
-      setSubmittedAnswer("")
-      previousAnswerRef.current = null
-      setHasSubmitted(false)
-      setIsLoading(false)
-      setIsWaiting(false)
-      setTimeIsUp(false)
-      setTimerReset((prev) => prev + 1) // Reset timer
-      setTimerActive(true) // Start timer
-      setCustomAnswers([]) // Reset custom answers for new question
-      lastCustomAnswersUpdateRef.current = null // Reset custom answers tracking
+    gameChannel.bind(EVENTS.QUESTION_UPDATE, (data: { question: Question; timestamp?: number }) => {
+      console.log(
+        "[DEBUG] 🔄 Received question update via Pusher:",
+        data.question.id,
+        "Timestamp:",
+        data.timestamp || "none",
+      )
 
-      // Reset vote counts for new question
-      const initialVoteCounts: VoteCounts = {}
-      data.question.options.forEach((option) => {
-        initialVoteCounts[option] = 0
-      })
-      setVoteCounts(initialVoteCounts)
-      setTotalVotes(0)
-      lastVoteUpdateRef.current = null // Reset vote tracking
+      // Force a fetch of the current question to ensure we have the latest data
+      fetchCurrentQuestion()
+        .then(() => {
+          console.log("[DEBUG] Forced refresh after question update event")
+        })
+        .catch((error) => {
+          console.error("[DEBUG] Error refreshing after question update:", error)
+
+          // If the fetch fails, still try to update with the data from the event
+          setCurrentQuestion(data.question)
+          setSelectedAnswer("")
+          setSubmittedAnswer("")
+          previousAnswerRef.current = null
+          setHasSubmitted(false)
+          setIsLoading(false)
+          setIsWaiting(false)
+          setTimeIsUp(false)
+          setTimerReset((prev) => prev + 1) // Reset timer
+          setTimerActive(true) // Start timer
+          setCustomAnswers([]) // Reset custom answers for new question
+          lastCustomAnswersUpdateRef.current = null // Reset custom answers tracking
+
+          // Reset vote counts for new question
+          const initialVoteCounts: VoteCounts = {}
+          data.question.options.forEach((option) => {
+            initialVoteCounts[option] = 0
+          })
+          setVoteCounts(initialVoteCounts)
+          setTotalVotes(0)
+          lastVoteUpdateRef.current = null // Reset vote tracking
+        })
     })
 
     // Listen for vote updates with improved logging and error handling
@@ -675,21 +691,34 @@ export default function GamePage() {
 
     isUpdatingVoteRef.current = true
 
-    // Use the debounced vote update function
-    if (debouncedVoteUpdateRef.current) {
-      debouncedVoteUpdateRef.current(currentQuestion.id, value, previousAnswer)
-    }
-
-    // Auto-submit the answer with debouncing
-    if (!hasSubmitted && !timeIsUp) {
-      // Optimistically update UI
-      setSubmittedAnswer(value)
-      setHasSubmitted(true)
-
-      // Use the debounced submit function
-      if (debouncedSubmitRef.current) {
-        debouncedSubmitRef.current()
+    try {
+      // First, update the vote count in real-time
+      if (debouncedVoteUpdateRef.current) {
+        debouncedVoteUpdateRef.current(currentQuestion.id, value, previousAnswer)
       }
+
+      // Then, submit the answer to be recorded permanently
+      // This ensures the vote is saved even if the user doesn't explicitly click "Submit"
+      if (!hasSubmitted && !timeIsUp) {
+        // Optimistically update UI
+        setSubmittedAnswer(value)
+        setHasSubmitted(true)
+
+        // Submit the answer directly (not debounced) to ensure it's saved
+        console.log("[DEBUG] Auto-submitting answer:", value)
+        const result = await submitAnswer(currentQuestion.id, value)
+
+        if (result.success) {
+          console.log("[DEBUG] Answer submitted successfully")
+        } else if (!result.debounced) {
+          console.error("[DEBUG] Server reported error submitting answer:", result.error)
+          // Don't revert UI state as the user has already seen their selection
+        }
+      }
+    } catch (error) {
+      console.error("[DEBUG] Error in handleAnswerChange:", error)
+    } finally {
+      isUpdatingVoteRef.current = false
     }
   }
 

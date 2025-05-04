@@ -1,13 +1,12 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Trash2, PlayCircle, Users } from "lucide-react"
 import { deleteQuestion, setActiveQuestion } from "@/app/actions"
 import { usePusher } from "@/hooks/use-pusher"
 import { EVENTS } from "@/lib/pusher-client"
-import { debounce } from "@/lib/debounce"
 
 interface Question {
   id: string
@@ -22,7 +21,6 @@ interface Question {
 interface CustomAnswer {
   id: string
   text: string
-  addedBy: string
   addedBy: string
 }
 
@@ -45,8 +43,9 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
   const [totalVotes, setTotalVotes] = useState<Record<string, number>>({})
   const [activePlayers, setActivePlayers] = useState(0)
   const [activityTimeout, setActivityTimeout] = useState(120) // Default 2 minutes in seconds
-  const { gameChannel } = usePusher()
+  const { gameChannel, isConnected } = usePusher()
   const [localCurrentQuestionId, setLocalCurrentQuestionId] = useState<string | null>(currentQuestionId || null)
+  const fetchTimestamps = useRef<Record<string, number>>({})
 
   // Fetch questions
   useEffect(() => {
@@ -69,6 +68,128 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
     setLocalCurrentQuestionId(currentQuestionId || null)
   }, [currentQuestionId])
 
+  // Fetch vote counts ONLY for the active question
+  const fetchVoteCounts = useCallback(
+    async (questionId: string, retryCount = 0) => {
+      // Skip if this isn't the active question
+      if (questionId !== localCurrentQuestionId) {
+        console.log(`[ADMIN] Skipping vote count fetch for non-active question: ${questionId}`)
+        return
+      }
+
+      // Add a simple cache to prevent duplicate fetches
+      const cacheKey = `votes-${questionId}`
+      const now = Date.now()
+      const lastFetch = fetchTimestamps.current[cacheKey] || 0
+      const timeSinceLastFetch = now - lastFetch
+
+      // Only fetch if it's been at least 2 seconds since the last fetch
+      if (timeSinceLastFetch < 2000) {
+        console.log(`[ADMIN] Skipping vote count fetch, last fetch was ${timeSinceLastFetch}ms ago`)
+        return
+      }
+
+      // Update the timestamp
+      fetchTimestamps.current[cacheKey] = now
+
+      try {
+        console.log(`[ADMIN] Fetching vote counts for active question: ${questionId}`)
+        const res = await fetch(`/api/vote-counts?questionId=${questionId}`)
+
+        // Handle rate limiting
+        if (res.status === 429) {
+          const retryAfter = res.headers.get("Retry-After") || Math.pow(2, retryCount) + 1
+          console.log(`[ADMIN] Vote counts rate limited. Retrying after ${retryAfter} seconds.`)
+
+          if (retryCount < 3) {
+            setTimeout(() => fetchVoteCounts(questionId, retryCount + 1), retryAfter * 1000)
+          }
+          return
+        }
+
+        const data = await res.json()
+
+        if (data.voteCounts) {
+          console.log("[ADMIN] Vote counts updated for active question:", data.voteCounts)
+
+          setVoteCounts((prev) => ({
+            ...prev,
+            [questionId]: data.voteCounts,
+          }))
+          setTotalVotes((prev) => ({
+            ...prev,
+            [questionId]: data.totalVotes,
+          }))
+        }
+      } catch (err) {
+        console.error(`Error fetching vote counts for question ${questionId}:`, err)
+      }
+    },
+    [localCurrentQuestionId],
+  )
+
+  // Fetch custom answers ONLY for the active question
+  const fetchCustomAnswers = useCallback(
+    async (questionId: string, retryCount = 0) => {
+      // Skip if this isn't the active question
+      if (questionId !== localCurrentQuestionId) {
+        console.log(`[ADMIN] Skipping custom answers fetch for non-active question: ${questionId}`)
+        return
+      }
+
+      // Add a simple cache to prevent duplicate fetches
+      const cacheKey = `customAnswers-${questionId}`
+      const now = Date.now()
+      const lastFetch = fetchTimestamps.current[cacheKey] || 0
+      const timeSinceLastFetch = now - lastFetch
+
+      // Only fetch if it's been at least 2 seconds since the last fetch
+      if (timeSinceLastFetch < 2000) {
+        console.log(`[ADMIN] Skipping custom answers fetch, last fetch was ${timeSinceLastFetch}ms ago`)
+        return
+      }
+
+      // Update the timestamp
+      fetchTimestamps.current[cacheKey] = now
+
+      try {
+        console.log(`[ADMIN] Fetching custom answers for active question: ${questionId}`)
+        const res = await fetch(`/api/custom-answers?questionId=${questionId}`)
+
+        // Handle rate limiting
+        if (res.status === 429) {
+          const retryAfter = res.headers.get("Retry-After") || Math.pow(2, retryCount) + 1
+          console.log(`[ADMIN] Custom answers rate limited. Retrying after ${retryAfter} seconds.`)
+
+          if (retryCount < 3) {
+            setTimeout(() => fetchCustomAnswers(questionId, retryCount + 1), retryAfter * 1000)
+          }
+          return
+        }
+
+        const data = await res.json()
+
+        if (data.customAnswers) {
+          console.log("[ADMIN] Custom answers updated for active question:", data.customAnswers.length)
+
+          setCustomAnswers((prev) => ({
+            ...prev,
+            [questionId]: data.customAnswers,
+          }))
+
+          // If there are new custom answers, update vote counts to include them
+          const currentCustomAnswers = customAnswers[questionId] || []
+          if (data.customAnswers.length > currentCustomAnswers.length) {
+            fetchVoteCounts(questionId)
+          }
+        }
+      } catch (err) {
+        console.error(`Error fetching custom answers for question ${questionId}:`, err)
+      }
+    },
+    [localCurrentQuestionId, customAnswers, fetchVoteCounts],
+  )
+
   // Set up Pusher event listeners
   useEffect(() => {
     if (!gameChannel) return
@@ -76,24 +197,46 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
     // Listen for vote updates
     gameChannel.bind(EVENTS.VOTE_UPDATE, (data: { voteCounts: VoteCounts; totalVotes: number; questionId: string }) => {
       if (data.questionId && data.voteCounts) {
-        setVoteCounts((prev) => ({
-          ...prev,
-          [data.questionId]: data.voteCounts,
-        }))
-        setTotalVotes((prev) => ({
-          ...prev,
-          [data.questionId]: data.totalVotes,
-        }))
+        // Only update vote counts for the active question
+        if (data.questionId === localCurrentQuestionId) {
+          console.log("[ADMIN] Real-time vote update received via Pusher for active question:", data.totalVotes)
+
+          setVoteCounts((prev) => ({
+            ...prev,
+            [data.questionId]: data.voteCounts,
+          }))
+          setTotalVotes((prev) => ({
+            ...prev,
+            [data.questionId]: data.totalVotes,
+          }))
+        }
       }
     })
 
     // Listen for custom answer updates
     gameChannel.bind(EVENTS.CUSTOM_ANSWER_ADDED, (data: { customAnswer: CustomAnswer; questionId: string }) => {
       if (data.questionId && data.customAnswer) {
-        setCustomAnswers((prev) => ({
-          ...prev,
-          [data.questionId]: [...(prev[data.questionId] || []), data.customAnswer],
-        }))
+        // Only update custom answers for the active question
+        if (data.questionId === localCurrentQuestionId) {
+          console.log("[ADMIN] Real-time custom answer added via Pusher to active question:", data.customAnswer.text)
+
+          setCustomAnswers((prev) => {
+            const currentAnswers = prev[data.questionId] || []
+            // Check if we already have this custom answer
+            if (!currentAnswers.some((ca) => ca.id === data.customAnswer.id)) {
+              const updatedAnswers = [...currentAnswers, data.customAnswer]
+
+              // Fetch updated vote counts when a new custom answer is added
+              fetchVoteCounts(data.questionId)
+
+              return {
+                ...prev,
+                [data.questionId]: updatedAnswers,
+              }
+            }
+            return prev
+          })
+        }
       }
     })
 
@@ -101,13 +244,20 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
       gameChannel.unbind(EVENTS.VOTE_UPDATE)
       gameChannel.unbind(EVENTS.CUSTOM_ANSWER_ADDED)
     }
-  }, [gameChannel])
+  }, [gameChannel, localCurrentQuestionId, fetchVoteCounts])
 
-  // Poll for active players count
+  // Modify the active players polling to be less frequent
   useEffect(() => {
     const fetchActivePlayers = async () => {
       try {
         const res = await fetch("/api/online-players")
+
+        // Handle rate limiting
+        if (res.status === 429) {
+          console.log("[ADMIN] Active players fetch rate limited. Will retry on next interval.")
+          return
+        }
+
         const data = await res.json()
         if (data.count !== undefined) {
           setActivePlayers(data.count)
@@ -121,25 +271,88 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
     }
 
     fetchActivePlayers()
-    const interval = setInterval(fetchActivePlayers, 10000) // Poll every 10 seconds
+    // Increase polling interval to 15s
+    const interval = setInterval(fetchActivePlayers, 15000)
 
     return () => clearInterval(interval)
   }, [])
 
-  const fetchQuestions = async () => {
+  // Add real-time updates for the active question - only poll if Pusher is not connected
+  useEffect(() => {
+    // Only proceed if we have an active question
+    if (!localCurrentQuestionId) return
+
+    // Track the current active question to handle cleanup properly
+    const currentActiveQuestion = localCurrentQuestionId
+
+    // Always fetch data once immediately when the active question changes
+    console.log("[ADMIN] Initial fetch for active question:", currentActiveQuestion)
+    fetchVoteCounts(currentActiveQuestion)
+    fetchCustomAnswers(currentActiveQuestion)
+
+    // Only set up polling interval if Pusher is not connected
+    let activeQuestionInterval: NodeJS.Timeout | null = null
+
+    if (!isConnected) {
+      console.log("[ADMIN] Pusher not connected, setting up polling for active question:", currentActiveQuestion)
+
+      // Increase polling interval to reduce API calls (from 5s to 8s)
+      activeQuestionInterval = setInterval(() => {
+        // Double-check that this is still the active question before fetching
+        if (currentActiveQuestion === localCurrentQuestionId) {
+          console.log("[ADMIN] Polling for active question data (Pusher not connected)")
+          fetchVoteCounts(currentActiveQuestion)
+          fetchCustomAnswers(currentActiveQuestion)
+        } else {
+          // The active question has changed, clear this interval
+          if (activeQuestionInterval) {
+            clearInterval(activeQuestionInterval)
+          }
+        }
+      }, 8000) // Poll every 8 seconds
+    } else {
+      console.log("[ADMIN] Pusher connected, relying on real-time updates for active question:", currentActiveQuestion)
+    }
+
+    return () => {
+      if (activeQuestionInterval) {
+        console.log("[ADMIN] Cleaning up polling for question:", currentActiveQuestion)
+        clearInterval(activeQuestionInterval)
+      }
+    }
+  }, [localCurrentQuestionId, isConnected])
+
+  // Fetch questions with retry logic
+  const fetchQuestions = async (retryCount = 0) => {
     setIsLoading(true)
     try {
       const response = await fetch("/api/questions")
+
+      // Check if we hit a rate limit
+      if (response.status === 429) {
+        const retryAfter = response.headers.get("Retry-After") || Math.pow(2, retryCount) + 1
+        console.log(`[ADMIN] Rate limited. Retrying after ${retryAfter} seconds.`)
+
+        // Wait and retry with exponential backoff
+        if (retryCount < 3) {
+          setTimeout(() => fetchQuestions(retryCount + 1), retryAfter * 1000)
+        } else {
+          setError("Rate limited. Please try again later.")
+        }
+        setIsLoading(false)
+        return
+      }
+
       const data = await response.json()
 
       if (data.questions) {
         setQuestions(data.questions)
 
-        // Fetch vote counts for all questions
-        data.questions.forEach((question: Question) => {
-          fetchVoteCounts(question.id)
-          fetchCustomAnswers(question.id)
-        })
+        // Only fetch vote counts for the active question if it exists
+        if (localCurrentQuestionId) {
+          fetchVoteCounts(localCurrentQuestionId)
+          fetchCustomAnswers(localCurrentQuestionId)
+        }
       }
     } catch (err) {
       console.error("Error fetching questions:", err)
@@ -148,50 +361,6 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
       setIsLoading(false)
     }
   }
-
-  const fetchVoteCounts = async (questionId: string) => {
-    try {
-      const res = await fetch(`/api/vote-counts?questionId=${questionId}`)
-      const data = await res.json()
-
-      if (data.voteCounts) {
-        setVoteCounts((prev) => ({
-          ...prev,
-          [questionId]: data.voteCounts,
-        }))
-        setTotalVotes((prev) => ({
-          ...prev,
-          [questionId]: data.totalVotes,
-        }))
-      }
-    } catch (err) {
-      console.error(`Error fetching vote counts for question ${questionId}:`, err)
-    }
-  }
-
-  const fetchCustomAnswers = async (questionId: string) => {
-    try {
-      const res = await fetch(`/api/custom-answers?questionId=${questionId}`)
-      const data = await res.json()
-
-      if (data.customAnswers) {
-        setCustomAnswers((prev) => ({
-          ...prev,
-          [questionId]: data.customAnswers,
-        }))
-      }
-    } catch (err) {
-      console.error(`Error fetching custom answers for question ${questionId}:`, err)
-    }
-  }
-
-  // Create a debounced version of fetchVoteCounts
-  const debouncedFetchVoteCounts = useCallback(
-    debounce((questionId: string) => {
-      fetchVoteCounts(questionId)
-    }, 2000),
-    [],
-  )
 
   const handleDelete = async (id: string) => {
     if (window.confirm("Are you sure you want to delete this question?")) {
@@ -307,7 +476,7 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
                     </span>
                   )}
 
-                  {totalVotes[question.id] > 0 && (
+                  {question.id === localCurrentQuestionId && totalVotes[question.id] > 0 && (
                     <span className="inline-flex items-center rounded-full bg-arcane-blue/10 px-2 py-1 text-xs font-medium text-arcane-blue">
                       <Users className="mr-1 h-3 w-3" />
                       {totalVotes[question.id]} vote{totalVotes[question.id] !== 1 ? "s" : ""}
@@ -337,7 +506,7 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
               </div>
             )}
 
-            {expandedQuestions[question.id] && (
+            {expandedQuestions[question.id] && question.id === localCurrentQuestionId && (
               <div className="mt-4 space-y-3">
                 <div className="text-xs font-medium text-arcane-gray">Answer Options:</div>
                 <div className="space-y-2">
@@ -405,19 +574,31 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
                     )
                   })}
                 </div>
+              </div>
+            )}
 
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-2 text-xs border-arcane-blue/30 text-arcane-blue hover:bg-arcane-blue/10"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    fetchVoteCounts(question.id)
-                    fetchCustomAnswers(question.id)
-                  }}
-                >
-                  Refresh Data
-                </Button>
+            {/* For non-active questions, just show basic info without vote counts */}
+            {expandedQuestions[question.id] && question.id !== localCurrentQuestionId && (
+              <div className="mt-4 space-y-3">
+                <div className="text-xs font-medium text-arcane-gray">Answer Options:</div>
+                <div className="space-y-2">
+                  {question.options.map((option) => (
+                    <div
+                      key={option}
+                      className="relative overflow-hidden rounded-md border border-arcane-blue/20 bg-arcane-navy/50 p-2"
+                    >
+                      <div className="relative flex items-center justify-between z-10">
+                        <div className="flex-1">
+                          <span
+                            className={`${option === question.correctAnswer ? "text-green-500 font-medium" : "text-arcane-gray-light"}`}
+                          >
+                            {option} {option === question.correctAnswer && "(Correct)"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </CardContent>
