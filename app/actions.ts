@@ -64,7 +64,7 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
   const participantId = cookies().get("participantId")?.value
 
   if (!participantId) {
-    redirect("/join")
+    return { success: false, error: "Not authenticated" }
   }
 
   try {
