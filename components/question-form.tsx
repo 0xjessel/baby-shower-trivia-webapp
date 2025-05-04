@@ -205,8 +205,7 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
       addDebugLog("Added no_correct_answer: true")
     } else {
       formData.append("correctAnswerIndex", correctAnswer.toString())
-      addDebugLog(`Added correctAnswerIndex: ${correctAnswer}`)
-      addDebugLog(`Correct answer text: "${options[correctAnswer]}"`)
+      addDebugLog(`Correct answer text:: "${options[correctAnswer]}"`)
     }
 
     try {
