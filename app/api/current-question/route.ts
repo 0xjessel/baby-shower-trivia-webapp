@@ -10,8 +10,8 @@ let cache = {
   questionId: null,
 }
 
-// Cache TTL in milliseconds (2 seconds)
-const CACHE_TTL = 2000
+// Cache TTL in milliseconds (reduced to 1 second to improve synchronization)
+const CACHE_TTL = 1000
 
 export async function GET() {
   try {
@@ -58,10 +58,16 @@ export async function GET() {
 
     // If there's no active question or game is in waiting state
     if (!game || !game.current_question_id || game.status !== "active") {
+      // Clear cache when in waiting state
+      cache = {
+        data: null,
+        timestamp: 0,
+        questionId: null,
+      }
       return NextResponse.json({ waiting: true, gameStatus: game?.status || "waiting" })
     }
 
-    // Check if we can use cached data
+    // Check if we can use cached data - but only if the question ID matches
     const now = Date.now()
     if (cache.data && cache.timestamp > now - CACHE_TTL && cache.questionId === game.current_question_id) {
       // Add participant-specific data to cached response

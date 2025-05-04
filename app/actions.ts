@@ -1207,6 +1207,9 @@ export async function setActiveQuestion(questionId: string) {
     // with the predefined options from the question
     await populateAnswerOptions(questionDetails.id, questionDetails.options)
 
+    // Add a small delay before triggering the Pusher event to ensure database updates are complete
+    await new Promise((resolve) => setTimeout(resolve, 200))
+
     // Trigger Pusher event to notify all clients
     try {
       console.log("[SERVER] Triggering QUESTION_UPDATE event via Pusher for question:", questionDetails.id)

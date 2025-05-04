@@ -255,24 +255,27 @@ export default function GamePage() {
     gameChannel.bind(EVENTS.QUESTION_UPDATE, (data: { question: Question; timestamp?: number }) => {
       console.log("Received question update via Pusher:", data.question.id)
 
-      // Instead of just fetching the current question, we need to reset state and fetch the new question
-      setCurrentQuestion(null)
-      setSelectedAnswer("")
-      setSubmittedAnswer("")
-      setHasSubmitted(false)
-      setIsWaiting(false)
-      setTimerActive(false)
-      setTimeIsUp(false)
-      setVoteCounts({})
-      setTotalVotes(0)
-      setCustomAnswers([])
-      setHasAddedCustomAnswer(false) // Reset this state for new questions
-      currentQuestionRef.current = null
-      lastVoteUpdateId.current = null
-      processedCustomAnswers.current = new Set() // Reset processed custom answers
+      // Instead of immediately fetching, set a small delay to allow the server to update
+      setTimeout(() => {
+        // Reset state
+        setCurrentQuestion(null)
+        setSelectedAnswer("")
+        setSubmittedAnswer("")
+        setHasSubmitted(false)
+        setIsWaiting(false)
+        setTimerActive(false)
+        setTimeIsUp(false)
+        setVoteCounts({})
+        setTotalVotes(0)
+        setCustomAnswers([])
+        setHasAddedCustomAnswer(false)
+        currentQuestionRef.current = null
+        lastVoteUpdateId.current = null
+        processedCustomAnswers.current = new Set()
 
-      // Fetch the new question
-      fetchCurrentQuestion()
+        // Fetch the new question
+        fetchCurrentQuestion()
+      }, 500) // Add a 500ms delay to allow server state to update
     })
 
     // Listen for vote updates
