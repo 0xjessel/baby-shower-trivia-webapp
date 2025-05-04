@@ -85,6 +85,22 @@ export async function createPusherClient() {
         console.log("[PusherClient] Disconnected from Pusher")
       })
 
+      // Add debug logs for channel subscriptions and events
+      const originalSubscribe = client.subscribe
+      client.subscribe = function (channelName) {
+        console.log(`[PusherClient] Subscribing to channel: ${channelName}`)
+        const channel = originalSubscribe.call(this, channelName)
+
+        // Wrap the bind method to log event bindings
+        const originalBind = channel.bind
+        channel.bind = function (eventName, callback) {
+          console.log(`[PusherClient] Binding to event "${eventName}" on channel "${channelName}"`)
+          return originalBind.call(this, eventName, callback)
+        }
+
+        return channel
+      }
+
       return client
     } catch (error) {
       console.error(`[PusherClient] Failed to initialize Pusher client (attempt ${connectionAttempts}):`, error)

@@ -268,7 +268,7 @@ export default function ResultsPage() {
           <img
             src="/images/victory-screen.png"
             alt="Victory!"
-            className={`w-full max-w-[250px] h-auto rounded-lg animate-bounce-slow ${
+            className={`w-full max-w-[350px] h-auto rounded-lg animate-bounce-slow ${
               imageLoaded ? "opacity-100" : "opacity-0"
             } transition-opacity duration-1000`}
             onLoad={() => setImageLoaded(true)}

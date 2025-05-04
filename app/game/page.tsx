@@ -1,17 +1,19 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { submitAnswer, addCustomAnswer } from "@/app/actions"
+import { toast } from "@/hooks/use-toast"
 import { usePusher } from "@/hooks/use-pusher"
 import { EVENTS } from "@/lib/pusher-client"
 import CountdownTimer from "@/components/countdown-timer"
-import { toast } from "@/hooks/use-toast"
 import { Users, Send } from "lucide-react"
 import PlayerHeartbeat from "@/components/player-heartbeat"
 
@@ -49,10 +51,6 @@ export default function GamePage() {
   const [timeIsUp, setTimeIsUp] = useState(false)
   const [voteCounts, setVoteCounts] = useState<VoteCounts>({})
   const [totalVotes, setTotalVotes] = useState(0)
-  const [customAnswers, setCustomAnswers] = useState<CustomAnswer[]>([])
-  const [newCustomAnswer, setNewCustomAnswer] = useState("")
-  const [isSubmittingCustom, setIsSubmittingCustom] = useState(false)
-  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false)
   const [playerName, setPlayerName] = useState<string>("")
   const playerNameRef = useRef<string>("")
   const router = useRouter()
@@ -64,7 +62,10 @@ export default function GamePage() {
   // Track the current question ID for cleanup
   const currentQuestionRef = useRef<string | null>(null)
 
-  // Add a new state variable to track if the user has added a custom answer
+  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false)
+  const [customAnswers, setCustomAnswers] = useState<CustomAnswer[]>([])
+  const [newCustomAnswer, setNewCustomAnswer] = useState("")
+  const [isSubmittingCustom, setIsSubmittingCustom] = useState(false)
   const [hasAddedCustomAnswer, setHasAddedCustomAnswer] = useState(false)
 
   // Fetch current question
@@ -105,6 +106,7 @@ export default function GamePage() {
           setTimeIsUp(false)
           setTimerReset((prev) => prev + 1)
           setTimerActive(true)
+          // Still store custom answers in the background for vote counting
           setCustomAnswers(data.customAnswers || [])
           currentQuestionRef.current = data.question.id
           setHasAddedCustomAnswer(false) // Reset for new question
@@ -148,7 +150,6 @@ export default function GamePage() {
 
           // Update custom answers if needed
           if (data.customAnswers && data.customAnswers.length !== customAnswers.length) {
-            setCustomAnswers(data.customAnswers)
             fetchVoteCounts(data.question.id)
           }
         }
@@ -158,7 +159,7 @@ export default function GamePage() {
     } finally {
       setIsLoading(false)
     }
-  }, [currentQuestion, customAnswers.length])
+  }, [currentQuestion, customAnswers])
 
   // Fetch vote counts for the current question
   const fetchVoteCounts = useCallback(async (questionId: string) => {
@@ -237,8 +238,6 @@ export default function GamePage() {
       setTimeIsUp(false)
       setVoteCounts({})
       setTotalVotes(0)
-      setCustomAnswers([])
-      setHasAddedCustomAnswer(false) // Reset this state for new questions
       currentQuestionRef.current = null
       lastVoteUpdateId.current = null
 
@@ -291,25 +290,21 @@ export default function GamePage() {
         customAnswer: CustomAnswer
         questionId: string
       }) => {
-        console.log("Custom answer received via Pusher:", data.customAnswer)
+        console.log("[DEBUG] CUSTOM_ANSWER_ADDED event received:", data)
+        console.log("[DEBUG] Current question ID:", currentQuestionRef.current)
+        console.log("[DEBUG] Event question ID:", data.questionId)
 
         // Only update if this is for the current question
         if (currentQuestionRef.current && data.questionId === currentQuestionRef.current) {
-          // Check if we already have this custom answer
-          const exists = customAnswers.some((ca) => ca.id === data.customAnswer.id)
+          // Update vote counts to include the new custom answer
+          setVoteCounts((prev) => ({
+            ...prev,
+            [data.customAnswer.text]: 0,
+          }))
 
-          if (!exists) {
-            setCustomAnswers((prev) => [...prev, data.customAnswer])
-
-            // Update vote counts to include the new custom answer
-            setVoteCounts((prev) => ({
-              ...prev,
-              [data.customAnswer.text]: 0,
-            }))
-
-            // Fetch updated vote counts
-            fetchVoteCounts(data.questionId)
-          }
+          // Fetch updated vote counts
+          console.log("[DEBUG] Fetching updated vote counts")
+          fetchVoteCounts(data.questionId)
         }
       },
     )
@@ -346,7 +341,7 @@ export default function GamePage() {
       gameChannel.unbind(EVENTS.SHOW_RESULTS)
       gameChannel.unbind(EVENTS.GAME_RESET)
     }
-  }, [gameChannel, router, fetchCurrentQuestion, fetchVoteCounts, customAnswers])
+  }, [gameChannel, router, fetchCurrentQuestion, fetchVoteCounts])
 
   // Handle answer selection
   const handleAnswerChange = async (value: string) => {
@@ -422,16 +417,49 @@ export default function GamePage() {
     }
   }
 
-  // Modify the handleAddCustomAnswer function to prevent page refresh and update the hasAddedCustomAnswer state
-  const handleAddCustomAnswer = async () => {
+  // Handle timer expiration
+  const handleTimeUp = () => {
+    setTimeIsUp(true)
+
+    // If the user has selected an answer but didn't submit it, auto-submit
+    if (selectedAnswer && !hasSubmitted) {
+      setHasSubmitted(true)
+      setSubmittedAnswer(selectedAnswer)
+
+      if (currentQuestion) {
+        submitAnswer(currentQuestion.id, selectedAnswer).catch((error) => {
+          console.error("Error auto-submitting answer:", error)
+        })
+      }
+    }
+
+    // Note: We're not disabling any Pusher listeners here,
+    // so vote updates will continue to be received
+  }
+
+  // Handle custom answer submission
+  const handleAddCustomAnswer = async (e?: React.FormEvent) => {
+    // If an event was passed, prevent default behavior
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+
     if (!newCustomAnswer.trim() || !currentQuestion || timeIsUp) return
+
+    console.log("[DEBUG] handleAddCustomAnswer - Starting custom answer submission")
+    console.log("[DEBUG] Current question:", currentQuestion.id)
+    console.log("[DEBUG] New custom answer:", newCustomAnswer.trim())
 
     setIsSubmittingCustom(true)
 
     try {
+      console.log("[DEBUG] Calling addCustomAnswer server action")
       const result = await addCustomAnswer(currentQuestion.id, newCustomAnswer.trim())
+      console.log("[DEBUG] Server action result:", result)
 
       if (result.success && result.customAnswer) {
+        console.log("[DEBUG] Custom answer added successfully:", result.customAnswer)
         setNewCustomAnswer("")
 
         // Add the custom answer to the local state immediately
@@ -462,6 +490,7 @@ export default function GamePage() {
           description: "Your answer has been submitted.",
         })
       } else {
+        console.log("[DEBUG] Failed to add custom answer:", result.error)
         toast({
           title: "Error",
           description: result.error || "Failed to add custom answer.",
@@ -469,7 +498,7 @@ export default function GamePage() {
         })
       }
     } catch (error) {
-      console.error("Failed to add custom answer:", error)
+      console.error("[DEBUG] Exception in handleAddCustomAnswer:", error)
       toast({
         title: "Error",
         description: "Failed to add custom answer. Please try again.",
@@ -477,27 +506,23 @@ export default function GamePage() {
       })
     } finally {
       setIsSubmittingCustom(false)
+      console.log("[DEBUG] handleAddCustomAnswer completed")
     }
+
+    return false
   }
 
-  // Handle timer expiration
-  const handleTimeUp = () => {
-    setTimeIsUp(true)
-
-    // If the user has selected an answer but didn't submit it, auto-submit
-    if (selectedAnswer && !hasSubmitted) {
-      setHasSubmitted(true)
-      setSubmittedAnswer(selectedAnswer)
-
-      if (currentQuestion) {
-        submitAnswer(currentQuestion.id, selectedAnswer).catch((error) => {
-          console.error("Error auto-submitting answer:", error)
-        })
+  // Handle key press in custom answer input
+  const handleCustomAnswerKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    console.log("[DEBUG] Key pressed in custom answer input:", e.key)
+    if (e.key === "Enter") {
+      console.log("[DEBUG] Enter key pressed, preventing default")
+      e.preventDefault()
+      if (newCustomAnswer.trim() && !isSubmittingCustom && !timeIsUp) {
+        console.log("[DEBUG] Calling handleAddCustomAnswer from Enter key press")
+        handleAddCustomAnswer()
       }
     }
-
-    // Note: We're not disabling any Pusher listeners here,
-    // so vote updates will continue to be received
   }
 
   if (isPusherLoading || isLoading) {
@@ -555,7 +580,8 @@ export default function GamePage() {
           )}
 
           <div className="mb-6">
-            <form onSubmit={(e) => e.preventDefault()}>
+            {/* Main answer options */}
+            <div className="space-y-3">
               <RadioGroup
                 value={selectedAnswer}
                 onValueChange={handleAnswerChange}
@@ -598,48 +624,38 @@ export default function GamePage() {
                     </div>
                   )
                 })}
-
-                {currentQuestion.allowsCustomAnswers !== false && !timeIsUp && !hasAddedCustomAnswer && (
-                  <div className="relative flex items-center rounded-lg border border-arcane-blue/20 bg-arcane-navy/50 p-3 transition-colors">
-                    <RadioGroupItem
-                      value="__custom__"
-                      id="option-custom"
-                      className="text-arcane-blue z-10 opacity-0 absolute"
-                      disabled
-                    />
-                    <div className="flex w-full items-center gap-2 z-10">
-                      <Input
-                        placeholder="Add your own answer..."
-                        value={newCustomAnswer}
-                        onChange={(e) => setNewCustomAnswer(e.target.value)}
-                        className="border-none bg-transparent text-arcane-gray-light focus:ring-0 pl-8 h-auto"
-                        disabled={isSubmittingCustom || timeIsUp}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault()
-                            if (newCustomAnswer.trim() && !isSubmittingCustom && !timeIsUp) {
-                              handleAddCustomAnswer()
-                            }
-                          }
-                        }}
-                      />
-                      <Button
-                        onClick={(e) => {
-                          e.preventDefault()
-                          handleAddCustomAnswer()
-                        }}
-                        disabled={!newCustomAnswer.trim() || isSubmittingCustom || timeIsUp}
-                        className="bg-arcane-gold hover:bg-arcane-gold/80 text-arcane-navy h-8 w-8 p-0 rounded-full"
-                        size="icon"
-                        type="button"
-                      >
-                        <Send className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                )}
               </RadioGroup>
-            </form>
+            </div>
+
+            {/* Custom answer input - only show if allowed and user hasn't added one yet */}
+            {currentQuestion.allowsCustomAnswers && !timeIsUp && !hasAddedCustomAnswer && (
+              <div className="relative flex items-center rounded-lg border border-arcane-blue/20 bg-arcane-navy/50 p-3 transition-colors mt-3">
+                <div className="flex w-full items-center gap-2 z-10">
+                  <Input
+                    placeholder="Add your own answer..."
+                    value={newCustomAnswer}
+                    onChange={(e) => setNewCustomAnswer(e.target.value)}
+                    onKeyDown={handleCustomAnswerKeyDown}
+                    className="border-none bg-transparent text-arcane-gray-light focus:ring-0 pl-2 h-auto"
+                    disabled={isSubmittingCustom || timeIsUp}
+                  />
+                  <Button
+                    onClick={(e) => {
+                      console.log("[DEBUG] Custom answer button clicked")
+                      e.preventDefault()
+                      console.log("[DEBUG] Default prevented for button click")
+                      handleAddCustomAnswer()
+                    }}
+                    disabled={!newCustomAnswer.trim() || isSubmittingCustom || timeIsUp}
+                    className="bg-arcane-gold hover:bg-arcane-gold/80 text-arcane-navy h-8 w-8 p-0 rounded-full"
+                    size="icon"
+                    type="button"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {totalVotes > 0 && (
               <div className="mt-2 text-xs text-arcane-gray flex items-center justify-end">

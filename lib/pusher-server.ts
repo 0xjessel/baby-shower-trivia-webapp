@@ -24,11 +24,12 @@ export const pusherServer = new Pusher({
 // Helper function to safely trigger Pusher events with error handling
 export async function safeTrigger(channel: string, event: string, data: any) {
   try {
-    console.log(`[PUSHER] Triggering event "${event}" on channel "${channel}" with data:`, data)
+    console.log(`[PUSHER-SERVER] Triggering event "${event}" on channel "${channel}" with data:`, data)
     await pusherServer.trigger(channel, event, data)
+    console.log(`[PUSHER-SERVER] Successfully triggered event "${event}" on channel "${channel}"`)
     return { success: true }
   } catch (error) {
-    console.error(`[PUSHER] Error triggering Pusher event "${event}" on channel "${channel}":`, error)
+    console.error(`[PUSHER-SERVER] Error triggering Pusher event "${event}" on channel "${channel}":`, error)
     return { success: false, error }
   }
 }

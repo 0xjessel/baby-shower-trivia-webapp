@@ -63,7 +63,14 @@ const lastCustomAnswerTime: Record<string, number> = {}
 export async function addCustomAnswer(questionId: string, answerText: string) {
   const participantId = cookies().get("participantId")?.value
 
+  console.log("[SERVER] addCustomAnswer - Starting", {
+    questionId,
+    answerText,
+    participantId: participantId ? participantId.substring(0, 8) + "..." : "none", // Log partial ID for privacy
+  })
+
   if (!participantId) {
+    console.log("[SERVER] addCustomAnswer - No participant ID, redirecting to join")
     redirect("/join")
   }
 
@@ -81,6 +88,7 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
 
     // Update the last custom answer time
     lastCustomAnswerTime[key] = now
+    console.log("[SERVER] Updated last custom answer time")
 
     // Get participant name
     const { data: participant, error: participantError } = await supabaseAdmin
@@ -89,7 +97,10 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
       .eq("id", participantId)
       .single()
 
-    if (participantError) throw participantError
+    if (participantError) {
+      console.log("[SERVER] Error getting participant:", participantError)
+      throw participantError
+    }
 
     // Get the question to check if custom answers are allowed
     const { data: question, error: questionError } = await supabaseAdmin
@@ -98,10 +109,14 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
       .eq("id", questionId)
       .single()
 
-    if (questionError) throw questionError
+    if (questionError) {
+      console.log("[SERVER] Error getting question:", questionError)
+      throw questionError
+    }
 
     // If custom answers are disabled for this question
     if (question.allows_custom_answers === false) {
+      console.log("[SERVER] Custom answers are not allowed for this question")
       return { success: false, error: "Custom answers are not allowed for this question" }
     }
 
@@ -109,6 +124,7 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
     const normalizedAnswerText = answerText.trim().toLowerCase()
 
     if (normalizedAnswerText.length === 0) {
+      console.log("[SERVER] Answer text is empty")
       return { success: false, error: "Answer cannot be empty" }
     }
 
@@ -118,17 +134,22 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
       .select("id, text")
       .eq("question_id", questionId)
 
-    if (optionError) throw optionError
+    if (optionError) {
+      console.log("[SERVER] Error checking existing options:", optionError)
+      throw optionError
+    }
 
     // Check for duplicates case-insensitively
     const isDuplicate = existingOptions.some((option) => option.text.toLowerCase() === normalizedAnswerText)
 
     if (isDuplicate) {
+      console.log("[SERVER] Answer is a duplicate")
       return { success: false, error: "This answer already exists" }
     }
 
     // Add the custom answer option with the original casing (but trimmed)
     const optionId = generateUUID()
+    console.log("[SERVER] Adding custom answer to database")
     const { error: insertError } = await supabaseAdmin.from("answer_options").insert({
       id: optionId,
       question_id: questionId,
@@ -138,7 +159,10 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
       added_by_name: participant.name,
     })
 
-    if (insertError) throw insertError
+    if (insertError) {
+      console.log("[SERVER] Error inserting custom answer:", insertError)
+      throw insertError
+    }
 
     // Create the custom answer object
     const customAnswer = {
@@ -149,18 +173,22 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
 
     // Broadcast the new custom answer via Pusher
     try {
+      console.log("[SERVER] Broadcasting custom answer via Pusher")
       await pusherServer.trigger(GAME_CHANNEL, EVENTS.CUSTOM_ANSWER_ADDED, {
         customAnswer,
         questionId,
+        timestamp: Date.now(), // Add timestamp to make the event unique
       })
+      console.log("[SERVER] Pusher event triggered successfully")
     } catch (pusherError) {
-      console.error("Error triggering Pusher custom answer event:", pusherError)
+      console.error("[SERVER] Error triggering Pusher custom answer event:", pusherError)
       // Continue execution even if Pusher fails
     }
 
+    console.log("[SERVER] addCustomAnswer completed successfully")
     return { success: true, customAnswer }
   } catch (error) {
-    console.error("Error adding custom answer:", error)
+    console.error("[SERVER] Error adding custom answer:", error)
     return { success: false, error: "Failed to add custom answer" }
   }
 }
