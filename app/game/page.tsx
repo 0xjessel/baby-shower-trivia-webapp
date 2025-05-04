@@ -390,6 +390,25 @@ export default function GamePage() {
       } finally {
         setIsSubmittingAnswer(false)
       }
+    } else if (submittedAnswer !== value) {
+      // This is the case where the user is changing their answer after already submitting
+      console.log("Changing previously submitted answer from", submittedAnswer, "to", value)
+      setIsSubmittingAnswer(true)
+      setSubmittedAnswer(value)
+
+      try {
+        const result = await submitAnswer(currentQuestion.id, value)
+
+        if (result.success) {
+          console.log("Answer changed successfully")
+        } else {
+          console.error("Error changing answer:", result.error)
+        }
+      } catch (error) {
+        console.error("Error changing answer:", error)
+      } finally {
+        setIsSubmittingAnswer(false)
+      }
     }
   }
 

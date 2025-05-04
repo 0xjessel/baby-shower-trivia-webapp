@@ -345,6 +345,29 @@ export async function submitAnswer(questionId: string, answerText: string) {
         if (updateError) throw updateError
 
         console.log(`[SERVER] Answer updated successfully`)
+
+        // After updating the answer, get updated vote counts and broadcast them
+        // This is the missing part - we need to broadcast vote updates when answers change
+        const { data: voteData, error: voteError } = await getVoteCounts(questionId)
+
+        if (voteError) throw voteError
+
+        // Broadcast vote update via Pusher with timestamp to ensure uniqueness
+        try {
+          const timestamp = new Date().toISOString()
+          await pusherServer.trigger(GAME_CHANNEL, EVENTS.VOTE_UPDATE, {
+            voteCounts: voteData.voteCounts,
+            totalVotes: voteData.totalVotes,
+            questionId: questionId,
+            timestamp: timestamp,
+            source: "answerChanged",
+          })
+
+          console.log(`[SERVER] Vote update broadcast after answer change at ${timestamp}:`, voteData.voteCounts)
+        } catch (pusherError) {
+          console.error("Error triggering Pusher vote update event:", pusherError)
+          // Continue execution even if Pusher fails
+        }
       } else {
         console.log(`[SERVER] Answer unchanged, skipping update`)
       }
