@@ -1,12 +1,31 @@
 import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase"
 
+// Add caching to reduce database load
+const cache = new Map()
+const CACHE_TTL = 2000 // 2 seconds
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const questionId = searchParams.get("questionId")
 
   if (!questionId) {
     return NextResponse.json({ error: "Question ID is required" }, { status: 400 })
+  }
+
+  // Check cache first
+  const cacheKey = `vote-counts-${questionId}`
+  const cachedData = cache.get(cacheKey)
+  const now = Date.now()
+
+  if (cachedData && cachedData.timestamp > now - CACHE_TTL) {
+    return NextResponse.json(cachedData.data, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        Pragma: "no-cache",
+        Expires: "0",
+      },
+    })
   }
 
   try {
@@ -48,24 +67,29 @@ export async function GET(request: Request) {
       }
     })
 
+    const responseData = {
+      voteCounts,
+      totalVotes: answers.length,
+      questionId: questionId,
+      timestamp: new Date().toISOString(),
+    }
+
+    // Update cache
+    cache.set(cacheKey, {
+      data: responseData,
+      timestamp: now,
+    })
+
     console.log(`Vote counts for question ${questionId}:`, voteCounts, "Total votes:", answers.length)
 
-    return NextResponse.json(
-      {
-        voteCounts,
-        totalVotes: answers.length,
-        questionId: questionId,
-        timestamp: new Date().toISOString(),
+    return NextResponse.json(responseData, {
+      headers: {
+        // Add cache control headers to prevent caching
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        Pragma: "no-cache",
+        Expires: "0",
       },
-      {
-        headers: {
-          // Add cache control headers to prevent caching
-          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-          Pragma: "no-cache",
-          Expires: "0",
-        },
-      },
-    )
+    })
   } catch (error) {
     console.error("Error fetching vote counts:", error)
     return NextResponse.json({ error: "Failed to fetch vote counts" }, { status: 500 })

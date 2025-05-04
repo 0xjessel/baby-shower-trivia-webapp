@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,8 +10,10 @@ import { toast } from "@/hooks/use-toast"
 import QuestionForm from "@/components/question-form"
 import QuestionList from "@/components/question-list"
 import GameStats from "@/components/game-stats"
-import GameManager from "@/components/game-manager" // Import the new component
+import GameManager from "@/components/game-manager"
+import ActiveQuestionDisplay from "@/components/active-question-display"
 import { Clock, ChevronLeft, ChevronRight, Trophy, Users } from "lucide-react"
+import type { Question, CustomAnswer, VoteCounts } from "@/types/game"
 
 export default function AdminDashboardPage() {
   const [isAdmin, setIsAdmin] = useState(false)
@@ -23,6 +25,69 @@ export default function AdminDashboardPage() {
   const router = useRouter()
   const [activePlayers, setActivePlayers] = useState(0)
   const [activeGameName, setActiveGameName] = useState<string>("Current Game")
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null)
+  const [customAnswers, setCustomAnswers] = useState<CustomAnswer[]>([])
+  const [voteCounts, setVoteCounts] = useState<VoteCounts>({})
+  const [totalVotes, setTotalVotes] = useState(0)
+
+  const lastFetchTimeRef = useRef(0)
+
+  // Fetch current question data with debouncing
+  const fetchCurrentQuestion = useCallback(async () => {
+    // Avoid fetching too frequently
+    if (Date.now() - lastFetchTimeRef.current < 2000) {
+      return
+    }
+
+    try {
+      lastFetchTimeRef.current = Date.now()
+      const response = await fetch("/api/current-question", {
+        headers: {
+          "Cache-Control": "no-cache",
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.question) {
+          setCurrentQuestion(data.question)
+          setCustomAnswers(data.customAnswers || [])
+
+          // Only fetch vote counts if we have a question
+          if (data.question.id) {
+            fetchVoteCounts(data.question.id)
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching current question:", error)
+    }
+  }, [])
+
+  // Fetch vote counts with debouncing
+  const fetchVoteCounts = useCallback(async (questionId: string) => {
+    // Avoid fetching too frequently
+    if (Date.now() - lastFetchTimeRef.current < 1000) {
+      return
+    }
+
+    try {
+      lastFetchTimeRef.current = Date.now()
+      const response = await fetch(`/api/vote-counts?questionId=${questionId}`, {
+        headers: {
+          "Cache-Control": "no-cache",
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setVoteCounts(data.voteCounts || {})
+        setTotalVotes(data.totalVotes || 0)
+      }
+    } catch (error) {
+      console.error("Error fetching vote counts:", error)
+    }
+  }, [])
 
   useEffect(() => {
     // Check if user is authenticated as admin
@@ -37,6 +102,7 @@ export default function AdminDashboardPage() {
           fetchQuestions()
           fetchActivePlayers() // Fetch active players initially
           fetchActiveGame() // Fetch active game name
+          fetchCurrentQuestion() // Fetch current question data
         }
         setIsLoading(false)
       })
@@ -49,7 +115,7 @@ export default function AdminDashboardPage() {
     const interval = setInterval(fetchActivePlayers, 30000) // Update every 30 seconds
 
     return () => clearInterval(interval)
-  }, [router])
+  }, [router, fetchCurrentQuestion])
 
   // Fetch active game name
   const fetchActiveGame = async () => {
@@ -148,6 +214,7 @@ export default function AdminDashboardPage() {
         // Refresh game state and questions
         await fetchGameState()
         await fetchQuestions()
+        await fetchCurrentQuestion()
       } else {
         toast({
           title: "Error",
@@ -181,6 +248,7 @@ export default function AdminDashboardPage() {
         // Refresh game state and questions
         await fetchGameState()
         await fetchQuestions()
+        await fetchCurrentQuestion()
       } else {
         toast({
           title: "Error",
@@ -244,6 +312,7 @@ export default function AdminDashboardPage() {
           })
           // Refresh questions to update vote counts
           await fetchQuestions()
+          await fetchCurrentQuestion()
         } else {
           toast({
             title: "Error",
@@ -278,6 +347,10 @@ export default function AdminDashboardPage() {
           })
           setCurrentQuestionId(null)
           setIsLastQuestion(false)
+          setCurrentQuestion(null)
+          setCustomAnswers([])
+          setVoteCounts({})
+          setTotalVotes(0)
         } else {
           toast({
             title: "Error",
@@ -322,76 +395,95 @@ export default function AdminDashboardPage() {
           <p className="mt-1 text-arcane-gold font-medium">Active Game: {activeGameName}</p>
         </div>
 
-        <div className="grid gap-6">
-          <Card className="border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
-            <CardHeader>
-              <CardTitle className="text-xl text-arcane-blue">Game Controls</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-3">
-              <Button
-                onClick={handlePreviousQuestion}
-                className="bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold flex items-center gap-2"
-                disabled={isActionInProgress || !currentQuestionId}
-              >
-                {isActionInProgress ? (
-                  "Processing..."
-                ) : (
-                  <>
-                    <ChevronLeft className="h-4 w-4" />
-                    <span>Previous</span>
-                  </>
-                )}
-              </Button>
-
-              <Button
-                onClick={handleNextQuestion}
-                className="bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold flex items-center gap-2"
-                disabled={isActionInProgress || isLastQuestion}
-              >
-                {isActionInProgress ? (
-                  "Processing..."
-                ) : (
-                  <>
-                    <Clock className="h-4 w-4" />
-                    <span>Next Question</span>
-                    <ChevronRight className="h-4 w-4" />
-                  </>
-                )}
-              </Button>
-
-              <Button
-                onClick={handleShowResults}
-                variant="outline"
-                className="border-arcane-gold text-arcane-gold hover:bg-arcane-gold/20 hover:text-arcane-gold hover:border-arcane-gold font-medium flex items-center gap-2"
-                disabled={isActionInProgress}
-              >
-                {isActionInProgress ? (
-                  "Processing..."
-                ) : (
-                  <>
-                    <Trophy className="h-4 w-4" />
-                    <span>Show Results</span>
-                  </>
-                )}
-              </Button>
-
-              <div className="ml-auto flex gap-3">
+        <div className="grid gap-6 grid-cols-1 md:grid-cols-3">
+          <div className="md:col-span-2">
+            <Card className="border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
+              <CardHeader>
+                <CardTitle className="text-xl text-arcane-blue">Game Controls</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-3">
                 <Button
-                  onClick={handleResetVotes}
+                  onClick={handlePreviousQuestion}
+                  className="bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold flex items-center gap-2"
+                  disabled={isActionInProgress || !currentQuestionId}
+                >
+                  {isActionInProgress ? (
+                    "Processing..."
+                  ) : (
+                    <>
+                      <ChevronLeft className="h-4 w-4" />
+                      <span>Previous</span>
+                    </>
+                  )}
+                </Button>
+
+                <Button
+                  onClick={handleNextQuestion}
+                  className="bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold flex items-center gap-2"
+                  disabled={isActionInProgress || isLastQuestion}
+                >
+                  {isActionInProgress ? (
+                    "Processing..."
+                  ) : (
+                    <>
+                      <Clock className="h-4 w-4" />
+                      <span>Next Question</span>
+                      <ChevronRight className="h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+
+                <Button
+                  onClick={handleShowResults}
                   variant="outline"
-                  className="border-amber-500 text-amber-500 hover:bg-amber-500/10"
+                  className="border-arcane-gold text-arcane-gold hover:bg-arcane-gold/20 hover:text-arcane-gold hover:border-arcane-gold font-medium flex items-center gap-2"
                   disabled={isActionInProgress}
                 >
-                  {isActionInProgress ? "Processing..." : "Reset Votes"}
+                  {isActionInProgress ? (
+                    "Processing..."
+                  ) : (
+                    <>
+                      <Trophy className="h-4 w-4" />
+                      <span>Show Results</span>
+                    </>
+                  )}
                 </Button>
 
-                <Button onClick={handleResetGame} variant="destructive" disabled={isActionInProgress}>
-                  {isActionInProgress ? "Processing..." : "Reset Games"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+                <div className="ml-auto flex gap-3">
+                  <Button
+                    onClick={handleResetVotes}
+                    variant="outline"
+                    className="border-amber-500 text-amber-500 hover:bg-amber-500/10"
+                    disabled={isActionInProgress}
+                  >
+                    {isActionInProgress ? "Processing..." : "Reset Votes"}
+                  </Button>
 
+                  <Button onClick={handleResetGame} variant="destructive" disabled={isActionInProgress}>
+                    {isActionInProgress ? "Processing..." : "Reset Games"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="md:col-span-1">
+            <div className="flex items-center mb-4 text-arcane-blue bg-arcane-navy/80 p-3 rounded-lg border-2 border-arcane-blue/50">
+              <Users className="h-5 w-5 mr-2" />
+              <span className="font-medium">{activePlayers} Active Players Online</span>
+            </div>
+
+            {/* Active Question Display with real-time updates */}
+            <ActiveQuestionDisplay
+              initialQuestion={currentQuestion}
+              initialCustomAnswers={customAnswers}
+              initialVoteCounts={voteCounts}
+              initialTotalVotes={totalVotes}
+            />
+          </div>
+        </div>
+
+        <div className="mt-6">
           <Tabs defaultValue="questions" className="w-full">
             <TabsList className="grid w-full grid-cols-4 bg-arcane-navy border border-arcane-blue/30">
               <TabsTrigger
@@ -423,10 +515,6 @@ export default function AdminDashboardPage() {
             <TabsContent value="questions">
               <Card className="border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
                 <CardContent className="pt-6">
-                  <div className="flex items-center mb-4 text-arcane-blue">
-                    <Users className="h-5 w-5 mr-2" />
-                    <span className="font-medium">{activePlayers} Active Players Online</span>
-                  </div>
                   <QuestionList currentQuestionId={currentQuestionId} />
                 </CardContent>
               </Card>
