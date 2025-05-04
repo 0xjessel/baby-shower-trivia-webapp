@@ -31,6 +31,9 @@ export function useGameState() {
   const router = useRouter()
   const { gameChannel } = usePusher()
 
+  // Track if we've already set up event listeners
+  const eventsSetupRef = useRef(false)
+
   // Track the last vote update we received to avoid duplicates
   const lastVoteUpdateId = useRef<string | null>(null)
 
@@ -125,7 +128,7 @@ export function useGameState() {
     } catch (err) {
       console.error("Error fetching current question:", err)
     }
-  }, []) // Empty dependency array to ensure stable reference
+  }, [currentQuestion, customAnswers.length]) // Only depend on currentQuestion and customAnswers.length
 
   // Use a ref to store the current state values that the callback needs
   const stateRef = useRef({
@@ -413,6 +416,62 @@ export function useGameState() {
     [newCustomAnswer, isSubmittingCustom, handleAddCustomAnswer],
   )
 
+  // Handle custom answer added event
+  const handleCustomAnswerAdded = useCallback(
+    (data: any) => {
+      console.log("[DEBUG] CUSTOM_ANSWER_ADDED event received:", data)
+
+      // Check if this event is for the current question
+      if (currentQuestionRef.current === data.questionId) {
+        console.log("[DEBUG] Current question ID:", currentQuestionRef.current)
+        console.log("[DEBUG] Event question ID:", data.questionId)
+
+        // Only add the custom answer if it wasn't added by the current user
+        // Check both the ID and the text to prevent duplicates
+        const isDuplicate = customAnswers.some(
+          (ca) =>
+            ca.id === data.customAnswer.id ||
+            ca.text.toLowerCase().trim() === data.customAnswer.text.toLowerCase().trim(),
+        )
+
+        if (!isDuplicate) {
+          console.log("[DEBUG] Adding new custom answer from another participant")
+          setCustomAnswers((prev) => [...prev, data.customAnswer])
+
+          // Update vote counts if provided
+          if (data.voteCounts) {
+            setVoteCounts(data.voteCounts)
+            setTotalVotes(data.totalVotes || 0)
+          } else {
+            // Fetch updated vote counts if not provided in the event
+            console.log("[DEBUG] Fetching updated vote counts")
+            fetchVoteCounts(data.questionId)
+          }
+        } else {
+          console.log("[DEBUG] Ignoring duplicate custom answer:", data.customAnswer.text)
+        }
+      }
+    },
+    [customAnswers, fetchVoteCounts],
+  )
+
+  // Handle vote counts updated event
+  const handleVoteCountsUpdated = useCallback(
+    (data: any) => {
+      console.log("[DEBUG] VOTE_COUNTS_UPDATED event received:", data)
+      if (currentQuestionRef.current === data.questionId) {
+        fetchVoteCounts(data.questionId)
+      }
+    },
+    [fetchVoteCounts],
+  )
+
+  // Handle question updated event
+  const handleQuestionUpdated = useCallback(() => {
+    console.log("[DEBUG] QUESTION_UPDATED event received")
+    fetchCurrentQuestion()
+  }, [fetchCurrentQuestion])
+
   // Initial setup - fetch question and set up authentication
   useEffect(() => {
     // Ensure this code only runs in the browser
@@ -430,69 +489,35 @@ export function useGameState() {
 
     // Fetch current question on initial load
     fetchCurrentQuestion()
+  }, [router, fetchCurrentQuestion])
 
-    // Set up Pusher event listeners
-    if (gameChannel) {
-      // Handle custom answer added event
-      gameChannel.bind("custom-answer-added", (data: any) => {
-        console.log("[DEBUG] CUSTOM_ANSWER_ADDED event received:", data)
+  // Set up Pusher event listeners - separate from the authentication effect
+  useEffect(() => {
+    // Only set up event listeners if we have a game channel and haven't set them up yet
+    if (!gameChannel || eventsSetupRef.current) return
 
-        // Check if this event is for the current question
-        if (currentQuestionRef.current === data.questionId) {
-          console.log("[DEBUG] Current question ID:", currentQuestionRef.current)
-          console.log("[DEBUG] Event question ID:", data.questionId)
+    console.log("[DEBUG] Setting up Pusher event listeners")
+    eventsSetupRef.current = true
 
-          // Only add the custom answer if it wasn't added by the current user
-          // Check both the ID and the text to prevent duplicates
-          const isDuplicate = customAnswers.some(
-            (ca) =>
-              ca.id === data.customAnswer.id ||
-              ca.text.toLowerCase().trim() === data.customAnswer.text.toLowerCase().trim(),
-          )
+    // Handle custom answer added event
+    gameChannel.bind("custom-answer-added", handleCustomAnswerAdded)
 
-          if (!isDuplicate) {
-            console.log("[DEBUG] Adding new custom answer from another participant")
-            setCustomAnswers((prev) => [...prev, data.customAnswer])
+    // Handle vote counts updated event
+    gameChannel.bind("vote-update", handleVoteCountsUpdated)
 
-            // Update vote counts if provided
-            if (data.voteCounts) {
-              setVoteCounts(data.voteCounts)
-              setTotalVotes(data.totalVotes || 0)
-            } else {
-              // Fetch updated vote counts if not provided in the event
-              console.log("[DEBUG] Fetching updated vote counts")
-              fetchVoteCounts(data.questionId)
-            }
-          } else {
-            console.log("[DEBUG] Ignoring duplicate custom answer:", data.customAnswer.text)
-          }
-        }
-      })
+    // Handle question updated event
+    gameChannel.bind("question-update", handleQuestionUpdated)
 
-      // Handle vote counts updated event
-      gameChannel.bind("vote-counts-updated", (data: any) => {
-        console.log("[DEBUG] VOTE_COUNTS_UPDATED event received:", data)
-        if (currentQuestionRef.current === data.questionId) {
-          fetchVoteCounts(data.questionId)
-        }
-      })
-
-      // Handle question updated event
-      gameChannel.bind("question-updated", (data: any) => {
-        console.log("[DEBUG] QUESTION_UPDATED event received:", data)
-        fetchCurrentQuestion()
-      })
-
-      return () => {
-        // Clean up event listeners
-        if (gameChannel) {
-          gameChannel.unbind("custom-answer-added")
-          gameChannel.unbind("vote-counts-updated")
-          gameChannel.unbind("question-updated")
-        }
+    return () => {
+      console.log("[DEBUG] Cleaning up Pusher event listeners")
+      if (gameChannel) {
+        gameChannel.unbind("custom-answer-added", handleCustomAnswerAdded)
+        gameChannel.unbind("vote-update", handleVoteCountsUpdated)
+        gameChannel.unbind("question-update", handleQuestionUpdated)
       }
+      eventsSetupRef.current = false
     }
-  }, [router, fetchCurrentQuestion, gameChannel, fetchVoteCounts, customAnswers])
+  }, [gameChannel, handleCustomAnswerAdded, handleVoteCountsUpdated, handleQuestionUpdated])
 
   return {
     // State

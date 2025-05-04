@@ -113,22 +113,11 @@ export async function GET() {
 
     while (retries > 0 && !question) {
       try {
-        // Check if the is_opinion_question column exists
-        const { data: columnInfo, error: columnError } = await supabaseAdmin.rpc("check_column_exists", {
-          table_name: "questions",
-          column_name: "is_opinion_question",
-        })
-
-        let queryString = "id, type, question, image_url, options, allows_custom_answers"
-
-        // Only include is_opinion_question if the column exists
-        if (columnInfo && columnInfo.exists) {
-          queryString += ", is_opinion_question"
-        }
-
+        // Try to get the question with all fields we need
+        // If is_opinion_question doesn't exist, Supabase will just ignore it
         const response = await supabaseAdmin
           .from("questions")
-          .select(queryString)
+          .select("id, type, question, image_url, options, allows_custom_answers, no_correct_answer")
           .eq("id", activeGame.current_question_id)
           .single()
 
@@ -210,6 +199,10 @@ export async function GET() {
     // Get all options (predefined + custom)
     const allOptions = answerOptions.map((option) => option.text)
 
+    // For now, use no_correct_answer as a proxy for isOpinionQuestion
+    // This will work until we add the actual column
+    const isOpinionQuestion = question.no_correct_answer || false
+
     // Prepare response data
     const responseData = {
       question: {
@@ -219,7 +212,7 @@ export async function GET() {
         imageUrl: question.image_url ? await getSignedUrl(question.image_url) : undefined,
         options: allOptions,
         allowsCustomAnswers: question.allows_custom_answers,
-        isOpinionQuestion: question.is_opinion_question || false,
+        isOpinionQuestion: isOpinionQuestion,
       },
       customAnswers,
     }
