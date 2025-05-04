@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
 import { usePusher } from "@/hooks/use-pusher"
 import { EVENTS } from "@/lib/pusher-client"
+import PlayerHeartbeat from "@/components/player-heartbeat"
 
 // Add this export to disable static generation for this page
 export const dynamic = "force-dynamic"
@@ -124,6 +125,10 @@ export default function ResultsPage() {
 
   return (
     <div className="min-h-screen bg-arcane-navy p-4">
+      {/* Include the heartbeat component */}
+      <PlayerHeartbeat />
+
+      {/* Rest of the JSX remains the same... */}
       <div className="mx-auto max-w-md">
         <div className="mb-6 text-center">
           <h1 className="text-3xl font-bold text-arcane-blue">Your Results</h1>

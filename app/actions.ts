@@ -56,6 +56,9 @@ export async function adminLogin(password: string) {
   return { success: false, error: "Invalid password" }
 }
 
+// Map to track last custom answer time for each participant and question
+const lastCustomAnswerTime: Record<string, number> = {}
+
 // Add a custom answer
 export async function addCustomAnswer(questionId: string, answerText: string) {
   const participantId = cookies().get("participantId")?.value
@@ -65,6 +68,20 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
   }
 
   try {
+    // Check if this participant has added a custom answer for this question recently
+    const key = `${participantId}-${questionId}`
+    const now = Date.now()
+    const lastCustom = lastCustomAnswerTime[key] || 0
+
+    // If last custom answer was less than 1 second ago, debounce the request
+    if (now - lastCustom < 1000) {
+      console.log("[SERVER] Debouncing custom answer, too soon after last custom answer")
+      return { success: false, error: "Please wait a moment before adding another answer" }
+    }
+
+    // Update the last custom answer time
+    lastCustomAnswerTime[key] = now
+
     // Get participant name
     const { data: participant, error: participantError } = await supabaseAdmin
       .from("participants")
@@ -133,6 +150,7 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
     try {
       await pusherServer.trigger(GAME_CHANNEL, EVENTS.CUSTOM_ANSWER_ADDED, {
         customAnswer,
+        questionId, // Include the questionId in the event
       })
     } catch (pusherError) {
       console.error("Error triggering Pusher custom answer event:", pusherError)
@@ -145,6 +163,9 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
     return { success: false, error: "Failed to add custom answer" }
   }
 }
+
+// Map to track last update time for each participant and question
+const lastVoteUpdateTime: Record<string, number> = {}
 
 // Update vote count in real-time without submitting an answer
 export async function updateVoteCount(questionId: string, selectedAnswer: string, previousAnswer: string | null) {
@@ -161,6 +182,20 @@ export async function updateVoteCount(questionId: string, selectedAnswer: string
       previousAnswer,
       participantId: participantId.substring(0, 8) + "...", // Log partial ID for privacy
     })
+
+    // Check if this participant has updated this question recently
+    const key = `${participantId}-${questionId}`
+    const now = Date.now()
+    const lastUpdate = lastVoteUpdateTime[key] || 0
+
+    // If last update was less than 1 second ago, debounce the request
+    if (now - lastUpdate < 1000) {
+      console.log("[SERVER] Debouncing vote update, too soon after last update")
+      return { success: true, debounced: true }
+    }
+
+    // Update the last update time
+    lastVoteUpdateTime[key] = now
 
     // Get the answer option IDs for both the selected and previous answers
     let selectedOptionId = null
@@ -236,6 +271,9 @@ export async function updateVoteCount(questionId: string, selectedAnswer: string
   }
 }
 
+// Map to track last submit time for each participant and question
+const lastSubmitTime: Record<string, number> = {}
+
 // Submit answer for a question
 export async function submitAnswer(questionId: string, answerText: string) {
   const participantId = cookies().get("participantId")?.value
@@ -245,6 +283,20 @@ export async function submitAnswer(questionId: string, answerText: string) {
   }
 
   try {
+    // Check if this participant has submitted an answer for this question recently
+    const key = `${participantId}-${questionId}`
+    const now = Date.now()
+    const lastSubmit = lastSubmitTime[key] || 0
+
+    // If last submit was less than 1 second ago, debounce the request
+    if (now - lastSubmit < 1000) {
+      console.log("[SERVER] Debouncing answer submit, too soon after last submit")
+      return { success: true, debounced: true }
+    }
+
+    // Update the last submit time
+    lastSubmitTime[key] = now
+
     // Get the answer option ID
     const { data: answerOption, error: optionError } = await supabaseAdmin
       .from("answer_options")
@@ -746,8 +798,7 @@ export async function uploadQuestion(formData: FormData) {
       if (!bucketExists) {
         // Create the bucket
         const { error: createBucketError } = await supabaseAdmin.storage.createBucket("baby-pictures", {
-          public: true, // Make the bucket public so we can access the images
-          fileSizeLimit: 1024 * 1024 * 5, // 5MB limit
+          public: false, // Private bucket for secure access
         })
 
         if (createBucketError) {
@@ -775,10 +826,9 @@ export async function uploadQuestion(formData: FormData) {
         return { success: false, error: "Failed to upload image. Please try again." }
       }
 
-      // Get public URL for the uploaded image
-      const { data: urlData } = supabaseAdmin.storage.from("baby-pictures").getPublicUrl(fileName)
-
-      imageUrl = urlData.publicUrl
+      // Instead of getting a public URL, we'll store just the file path
+      // We'll generate signed URLs when needed
+      imageUrl = `baby-pictures/${fileName}`
     }
 
     // Insert the question into the database with a proper UUID

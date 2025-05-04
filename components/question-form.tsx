@@ -139,7 +139,7 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
               className="mt-1 border-arcane-blue/30 bg-arcane-navy/50 text-arcane-gray-light focus:border-arcane-blue focus:ring-arcane-blue"
               required
             />
-            <p className="mt-1 text-xs text-arcane-gray">Maximum file size: 5MB. Supported formats: JPG, PNG, GIF.</p>
+            <p className="mt-1 text-xs text-arcane-gray">Supported formats: JPG, PNG, GIF.</p>
           </div>
         )}
 

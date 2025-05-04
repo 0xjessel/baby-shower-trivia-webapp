@@ -1,6 +1,7 @@
 import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
-import { supabaseAdmin } from "@/lib/supabase"
+// Import the getSignedUrl function
+import { supabaseAdmin, getSignedUrl } from "@/lib/supabase"
 
 export async function GET() {
   // Check if participant is authenticated
@@ -80,10 +81,16 @@ export async function GET() {
           return null
         }
 
+        // Generate a signed URL for the image if it exists
+        let imageUrl = question.image_url
+        if (imageUrl) {
+          imageUrl = await getSignedUrl(imageUrl)
+        }
+
         return {
           questionId: question.id,
           question: question.question,
-          imageUrl: question.image_url,
+          imageUrl: imageUrl,
           correctAnswer: question.correct_answer,
           yourAnswer: answerOption.text,
           isCorrect: a.is_correct,

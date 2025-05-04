@@ -13,6 +13,8 @@ import { EVENTS } from "@/lib/pusher-client"
 import CountdownTimer from "@/components/countdown-timer"
 import { toast } from "@/hooks/use-toast"
 import { Users, Send } from "lucide-react"
+import { debounce } from "@/lib/debounce"
+import PlayerHeartbeat from "@/components/player-heartbeat"
 
 // Add this export to disable static generation for this page
 export const dynamic = "force-dynamic"
@@ -60,6 +62,19 @@ export default function GamePage() {
   const lastVoteUpdateRef = useRef<string | null>(null)
   const lastCustomAnswersUpdateRef = useRef<string | null>(null)
   const pusherConnectionAttempts = useRef(0)
+  const errorCount = useRef(0)
+
+  // Add these refs for debounced functions
+  const debouncedSubmitRef = useRef<(...args: any[]) => void>()
+  const debouncedVoteUpdateRef = useRef<(...args: any[]) => void>()
+  const debouncedCustomAnswerRef = useRef<(...args: any[]) => void>()
+
+  // Reset error count when we successfully get data
+  useEffect(() => {
+    if (currentQuestion) {
+      errorCount.current = 0
+    }
+  }, [currentQuestion])
 
   // Fetch vote counts for the current question
   const fetchVoteCounts = useCallback(async (questionId: string) => {
@@ -170,7 +185,22 @@ export default function GamePage() {
   const fetchCurrentQuestion = useCallback(async () => {
     try {
       console.log("[DEBUG] Fetching current question...")
-      const res = await fetch("/api/current-question")
+      const res = await fetch("/api/current-question", {
+        // Add cache control headers to prevent browser caching
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      })
+
+      // Check if the response is ok before trying to parse JSON
+      if (!res.ok) {
+        const errorText = await res.text()
+        console.error(`[DEBUG] Error response from API (${res.status}):`, errorText)
+        throw new Error(`API returned ${res.status}: ${errorText}`)
+      }
+
       const data = await res.json()
 
       if (data.waiting) {
@@ -187,16 +217,8 @@ export default function GamePage() {
           setTimeIsUp(false)
           setTimerReset((prev) => prev + 1) // Reset timer
           setTimerActive(true) // Start timer
-
-          // Initialize custom answers from API response
-          if (data.customAnswers) {
-            console.log("[DEBUG] Initial custom answers:", data.customAnswers.length)
-            setCustomAnswers(data.customAnswers)
-            lastCustomAnswersUpdateRef.current = JSON.stringify(data.customAnswers)
-          } else {
-            setCustomAnswers([])
-            lastCustomAnswersUpdateRef.current = null
-          }
+          setCustomAnswers([]) // Reset custom answers for new question
+          lastCustomAnswersUpdateRef.current = null // Reset custom answers tracking
 
           // Reset vote counts for new question
           const initialVoteCounts: VoteCounts = {}
@@ -276,6 +298,21 @@ export default function GamePage() {
       }
     } catch (err) {
       console.error("[DEBUG] Error fetching current question:", err)
+
+      // Don't update state on every error to prevent UI flashing
+      // Only show error state after multiple consecutive failures
+      if (errorCount.current >= 3) {
+        toast({
+          title: "Connection issue",
+          description: "Having trouble connecting to the game. Retrying...",
+          variant: "destructive",
+        })
+      }
+
+      errorCount.current++
+
+      // Wait a bit longer before the next retry
+      await new Promise((resolve) => setTimeout(resolve, 2000))
     } finally {
       setIsLoading(false)
     }
@@ -298,29 +335,42 @@ export default function GamePage() {
     // Fetch current question on initial load
     fetchCurrentQuestion()
 
-    // Set up polling as a fallback for real-time updates
-    const pollInterval = setInterval(() => {
-      console.log("[DEBUG] Polling cycle started...")
+    // Only set up polling if Pusher is not connected or we're in preview mode
+    let pollInterval: NodeJS.Timeout | null = null
 
-      // Always check for question updates first to ensure we're on the latest question
-      fetchCurrentQuestion().then(() => {
-        // After ensuring we have the latest question, fetch vote counts and custom answers if needed
-        if (currentQuestion) {
-          console.log("[DEBUG] Also polling for vote updates and custom answers...")
+    if (!isConnected || isPreviewMode) {
+      console.log(`[DEBUG] Setting up polling (${isConnected ? "preview mode" : "no Pusher connection"})`)
 
-          // Run these in parallel
-          Promise.all([fetchVoteCounts(currentQuestion.id), fetchCustomAnswers(currentQuestion.id)]).catch((err) => {
-            console.error("[DEBUG] Error in polling cycle:", err)
-          })
-        }
-      })
-    }, 3000) // Poll every 3 seconds
+      // Poll more frequently if no Pusher connection, less frequently if it's just a backup
+      const pollFrequency = !isConnected ? 3000 : 10000
+
+      pollInterval = setInterval(() => {
+        console.log("[DEBUG] Polling cycle started...")
+
+        // Always check for question updates first to ensure we're on the latest question
+        fetchCurrentQuestion().then(() => {
+          // After ensuring we have the latest question, fetch vote counts and custom answers if needed
+          if (currentQuestion) {
+            console.log("[DEBUG] Also polling for vote updates and custom answers...")
+
+            // Run these in parallel
+            Promise.all([fetchVoteCounts(currentQuestion.id), fetchCustomAnswers(currentQuestion.id)]).catch((err) => {
+              console.error("[DEBUG] Error in polling cycle:", err)
+            })
+          }
+        })
+      }, pollFrequency)
+    } else {
+      console.log("[DEBUG] Pusher connected, skipping polling setup")
+    }
 
     return () => {
-      console.log("[DEBUG] Clearing poll interval")
-      clearInterval(pollInterval)
+      if (pollInterval) {
+        console.log("[DEBUG] Clearing poll interval")
+        clearInterval(pollInterval)
+      }
     }
-  }, [router, fetchCurrentQuestion, currentQuestion, fetchVoteCounts, fetchCustomAnswers])
+  }, [router, fetchCurrentQuestion, currentQuestion, fetchVoteCounts, fetchCustomAnswers, isConnected, isPreviewMode])
 
   useEffect(() => {
     // Ensure this code only runs in the browser
@@ -332,6 +382,17 @@ export default function GamePage() {
     }
 
     console.log("[DEBUG] Setting up Pusher event listeners, connected:", isConnected)
+
+    // If we just connected to Pusher, fetch the latest data
+    if (isConnected) {
+      console.log("[DEBUG] Pusher connected, fetching latest data")
+      fetchCurrentQuestion().then(() => {
+        if (currentQuestion) {
+          fetchVoteCounts(currentQuestion.id)
+          fetchCustomAnswers(currentQuestion.id)
+        }
+      })
+    }
 
     // Set up Pusher event listeners
     gameChannel.bind(EVENTS.QUESTION_UPDATE, (data: { question: Question }) => {
@@ -449,7 +510,124 @@ export default function GamePage() {
       gameChannel.unbind(EVENTS.SHOW_RESULTS)
       gameChannel.unbind(EVENTS.GAME_RESET)
     }
-  }, [gameChannel, router, currentQuestion, isConnected, customAnswers, fetchVoteCounts])
+  }, [gameChannel, router, currentQuestion, isConnected, customAnswers, fetchVoteCounts, fetchCurrentQuestion])
+
+  // Initialize debounced functions
+  useEffect(() => {
+    // Debounced submit function (1 second delay)
+    debouncedSubmitRef.current = debounce(async () => {
+      if (!selectedAnswer || !currentQuestion) return
+
+      try {
+        console.log("[DEBUG] Submitting answer (debounced):", selectedAnswer)
+
+        // Send to server
+        const result = await submitAnswer(currentQuestion.id, selectedAnswer)
+
+        if (result.success) {
+          console.log("[DEBUG] Answer submitted successfully")
+          toast({
+            title: "Answer submitted!",
+          })
+        } else {
+          console.error("[DEBUG] Server reported error submitting answer:", result.error)
+          throw new Error(result.error || "Failed to submit answer")
+        }
+      } catch (error) {
+        console.error("[DEBUG] Failed to submit answer:", error)
+
+        toast({
+          title: "Error",
+          description: "Failed to submit your answer. Please try again.",
+          variant: "destructive",
+        })
+      }
+    }, 1000)
+
+    // Debounced vote update function (1 second delay)
+    debouncedVoteUpdateRef.current = debounce(
+      async (questionId: string, value: string, previousAnswer: string | null) => {
+        try {
+          console.log("[DEBUG] Sending vote update to server (debounced)")
+          // Send the update to the server
+          const result = await updateVoteCount(questionId, value, previousAnswer)
+
+          if (!result.success) {
+            console.error("[DEBUG] Server reported error updating vote count:", result.error)
+          } else {
+            console.log("[DEBUG] Server confirmed vote update success")
+          }
+        } catch (error) {
+          console.error("[DEBUG] Failed to update vote count:", error)
+        } finally {
+          isUpdatingVoteRef.current = false
+        }
+      },
+      1000,
+    )
+
+    // Debounced custom answer function (1 second delay)
+    debouncedCustomAnswerRef.current = debounce(async (questionId: string, answerText: string) => {
+      try {
+        const result = await addCustomAnswer(questionId, answerText)
+
+        if (result.success && result.customAnswer) {
+          setNewCustomAnswer("")
+          toast({
+            title: "Custom answer added!",
+            description: "Your answer has been submitted.",
+          })
+
+          // Add the custom answer to the local state immediately
+          const newCustomAnswerObj = result.customAnswer
+          setCustomAnswers((prev) => [...prev, newCustomAnswerObj])
+
+          // Set the newly added answer as the selected answer
+          setSelectedAnswer(newCustomAnswerObj.text)
+          previousAnswerRef.current = newCustomAnswerObj.text
+
+          // Update vote counts optimistically
+          setVoteCounts((prev) => ({
+            ...prev,
+            [newCustomAnswerObj.text]: 1,
+          }))
+
+          // Update total votes
+          setTotalVotes((prev) => prev + 1)
+
+          // Submit the answer automatically
+          if (debouncedSubmitRef.current) {
+            debouncedSubmitRef.current()
+          }
+
+          setSubmittedAnswer(newCustomAnswerObj.text)
+          setHasSubmitted(true)
+        } else {
+          toast({
+            title: "Error",
+            description: result.error || "Failed to add custom answer.",
+            variant: "destructive",
+          })
+        }
+      } catch (error) {
+        console.error("Failed to add custom answer:", error)
+        toast({
+          title: "Error",
+          description: "Failed to add custom answer. Please try again.",
+          variant: "destructive",
+        })
+      } finally {
+        setIsSubmittingCustom(false)
+      }
+    }, 1000)
+
+    return () => {
+      // Clean up debounced functions if needed
+      debouncedSubmitRef.current = undefined
+      debouncedVoteUpdateRef.current = undefined
+      debouncedCustomAnswerRef.current = undefined
+    }
+  }, [currentQuestion])
 
   const handleAnswerChange = async (value: string) => {
     if (!currentQuestion) return
@@ -489,11 +667,6 @@ export default function GamePage() {
     // Store the new answer as the previous answer for next time
     previousAnswerRef.current = value
 
-    // If already submitted and user selects a different answer, allow resubmission
-    if (hasSubmitted && !timeIsUp && value !== submittedAnswer) {
-      setHasSubmitted(false)
-    }
-
     // Prevent multiple simultaneous vote updates
     if (isUpdatingVoteRef.current) {
       console.log("[DEBUG] Vote update already in progress, skipping")
@@ -502,74 +675,50 @@ export default function GamePage() {
 
     isUpdatingVoteRef.current = true
 
-    try {
-      console.log("[DEBUG] Sending vote update to server")
-      // Send the update to the server
-      const result = await updateVoteCount(currentQuestion.id, value, previousAnswer)
+    // Use the debounced vote update function
+    if (debouncedVoteUpdateRef.current) {
+      debouncedVoteUpdateRef.current(currentQuestion.id, value, previousAnswer)
+    }
 
-      if (!result.success) {
-        console.error("[DEBUG] Server reported error updating vote count:", result.error)
-      } else {
-        console.log("[DEBUG] Server confirmed vote update success")
+    // Auto-submit the answer with debouncing
+    if (!hasSubmitted && !timeIsUp) {
+      // Optimistically update UI
+      setSubmittedAnswer(value)
+      setHasSubmitted(true)
+
+      // Use the debounced submit function
+      if (debouncedSubmitRef.current) {
+        debouncedSubmitRef.current()
       }
-    } catch (error) {
-      console.error("[DEBUG] Failed to update vote count:", error)
-      // If the server update fails, we could revert the optimistic update here
-      // but for simplicity, we'll leave it as is since the next poll will sync
-    } finally {
-      isUpdatingVoteRef.current = false
     }
   }
 
   const handleSubmit = async () => {
     if (!selectedAnswer || !currentQuestion) return
 
-    try {
-      console.log("[DEBUG] Submitting answer:", selectedAnswer)
-      // Optimistically update UI
-      setSubmittedAnswer(selectedAnswer)
-      setHasSubmitted(true)
+    // Optimistically update UI
+    setSubmittedAnswer(selectedAnswer)
+    setHasSubmitted(true)
 
-      // Send to server
-      const result = await submitAnswer(currentQuestion.id, selectedAnswer)
-
-      if (result.success) {
-        console.log("[DEBUG] Answer submitted successfully")
-        toast({
-          title: "Answer submitted!",
-        })
-      } else {
-        console.error("[DEBUG] Server reported error submitting answer:", result.error)
-        throw new Error(result.error || "Failed to submit answer")
-      }
-    } catch (error) {
-      console.error("[DEBUG] Failed to submit answer:", error)
-
-      // Revert optimistic update on error
-      setHasSubmitted(false)
-
-      toast({
-        title: "Error",
-        description: "Failed to submit your answer. Please try again.",
-        variant: "destructive",
-      })
+    // Use the debounced submit function
+    if (debouncedSubmitRef.current) {
+      debouncedSubmitRef.current()
     }
   }
 
   const handleTimeUp = () => {
     setTimeIsUp(true)
-    if (selectedAnswer && !hasSubmitted && currentQuestion) {
-      // Auto-submit if user selected but didn't submit
-      handleSubmit()
-    } else if (!selectedAnswer && !hasSubmitted && currentQuestion) {
-      // Only show the "didn't select" toast if they haven't submitted anything
-      toast({
-        title: "Time's up!",
-        description: "You didn't select an answer in time.",
-        variant: "destructive",
-      })
+
+    // If the user has already submitted an answer, do nothing
+    if (hasSubmitted || submittedAnswer) {
+      return
     }
-    // If they've already submitted, don't show any toast
+
+    // If they selected an answer but didn't submit it, auto-submit
+    if (selectedAnswer) {
+      handleSubmit()
+    }
+    // No toast notification for when time is up
   }
 
   const handleAddCustomAnswer = async () => {
@@ -577,53 +726,9 @@ export default function GamePage() {
 
     setIsSubmittingCustom(true)
 
-    try {
-      const result = await addCustomAnswer(currentQuestion.id, newCustomAnswer.trim())
-
-      if (result.success && result.customAnswer) {
-        setNewCustomAnswer("")
-        toast({
-          title: "Custom answer added!",
-          description: "Your answer has been submitted.",
-        })
-
-        // Add the custom answer to the local state immediately
-        const newCustomAnswerObj = result.customAnswer
-        setCustomAnswers((prev) => [...prev, newCustomAnswerObj])
-
-        // Set the newly added answer as the selected answer
-        setSelectedAnswer(newCustomAnswerObj.text)
-        previousAnswerRef.current = newCustomAnswerObj.text
-
-        // Update vote counts optimistically
-        setVoteCounts((prev) => ({
-          ...prev,
-          [newCustomAnswerObj.text]: 1,
-        }))
-
-        // Update total votes
-        setTotalVotes((prev) => prev + 1)
-
-        // Submit the answer automatically
-        await submitAnswer(currentQuestion.id, newCustomAnswerObj.text)
-        setSubmittedAnswer(newCustomAnswerObj.text)
-        setHasSubmitted(true)
-      } else {
-        toast({
-          title: "Error",
-          description: result.error || "Failed to add custom answer.",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error("Failed to add custom answer:", error)
-      toast({
-        title: "Error",
-        description: "Failed to add custom answer. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsSubmittingCustom(false)
+    // Use the debounced custom answer function
+    if (debouncedCustomAnswerRef.current) {
+      debouncedCustomAnswerRef.current(currentQuestion.id, newCustomAnswer.trim())
     }
   }
 
@@ -659,6 +764,10 @@ export default function GamePage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-arcane-navy p-4">
+      {/* Include the heartbeat component */}
+      <PlayerHeartbeat />
+
+      {/* Rest of the JSX remains the same... */}
       <Card className="w-full max-w-md border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
         <CardContent className="p-6">
           <div className="flex justify-between items-start mb-4">
@@ -760,16 +869,15 @@ export default function GamePage() {
             )}
           </div>
 
-          <Button
-            onClick={handleSubmit}
-            disabled={!selectedAnswer || timeIsUp || hasSubmitted}
-            className="w-full bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold"
-          >
-            {timeIsUp ? "Time's Up!" : "Submit Answer"}
-          </Button>
-
-          {timeIsUp && (
-            <p className="text-center text-arcane-gray text-sm mt-2">Time's up! Waiting for the next question...</p>
+          {/* Replace the submit button with a message when an answer is selected */}
+          {selectedAnswer && !hasSubmitted && !timeIsUp ? (
+            <div className="w-full text-center py-2 text-arcane-blue">Submitting your answer...</div>
+          ) : timeIsUp ? (
+            <div className="w-full text-center py-2 text-arcane-gray">Time's up! Waiting for the next question...</div>
+          ) : !selectedAnswer ? (
+            <div className="w-full text-center py-2 text-arcane-gray">Select an answer to submit</div>
+          ) : (
+            <div className="w-full text-center py-2"></div> // Empty div to maintain spacing
           )}
 
           {isPreviewMode && (

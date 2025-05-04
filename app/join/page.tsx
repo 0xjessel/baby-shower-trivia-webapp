@@ -2,13 +2,14 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { joinGame } from "@/app/actions"
+import PlayerHeartbeat from "@/components/player-heartbeat"
 
 // Add this export to disable static generation for this page
 export const dynamic = "force-dynamic"
@@ -17,6 +18,16 @@ export default function JoinPage() {
   const [name, setName] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
+  const [isReturningPlayer, setIsReturningPlayer] = useState(false)
+
+  useEffect(() => {
+    // Check if player is returning
+    const playerName = localStorage.getItem("playerName")
+    if (playerName) {
+      setIsReturningPlayer(true)
+      setName(playerName)
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -42,6 +53,9 @@ export default function JoinPage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-arcane-navy p-4">
+      {/* Include heartbeat for returning players */}
+      {isReturningPlayer && <PlayerHeartbeat />}
+
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
           <div className="mb-6 rounded-lg overflow-hidden shadow-lg border-2 border-arcane-gold/50">
@@ -78,7 +92,7 @@ export default function JoinPage() {
                 className="w-full bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold"
                 disabled={isSubmitting}
               >
-                {isSubmitting ? "Joining..." : "Join Game"}
+                {isSubmitting ? "Joining..." : isReturningPlayer ? "Rejoin Game" : "Join Game"}
               </Button>
             </form>
           </CardContent>

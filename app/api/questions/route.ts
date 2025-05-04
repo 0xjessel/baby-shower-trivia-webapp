@@ -1,6 +1,7 @@
 import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
-import { supabaseAdmin } from "@/lib/supabase"
+// Import the getSignedUrl function
+import { supabaseAdmin, getSignedUrl } from "@/lib/supabase"
 
 export async function GET() {
   // Check if admin is authenticated
@@ -20,15 +21,28 @@ export async function GET() {
       throw error
     }
 
+    // In the GET function, modify the part where questions are formatted
+    // Around line 20-30
+
     // Format the questions for the frontend
-    const formattedQuestions = questions.map((q) => ({
-      id: q.id,
-      type: q.type,
-      question: q.question,
-      imageUrl: q.image_url,
-      options: q.options,
-      correctAnswer: q.correct_answer,
-    }))
+    const formattedQuestions = await Promise.all(
+      questions.map(async (q) => {
+        // Generate a signed URL for the image if it exists
+        let imageUrl = q.image_url
+        if (imageUrl) {
+          imageUrl = await getSignedUrl(imageUrl)
+        }
+
+        return {
+          id: q.id,
+          type: q.type,
+          question: q.question,
+          imageUrl: imageUrl,
+          options: q.options,
+          correctAnswer: q.correct_answer,
+        }
+      }),
+    )
 
     return NextResponse.json({ questions: formattedQuestions })
   } catch (error) {

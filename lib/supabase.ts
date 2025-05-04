@@ -1,49 +1,46 @@
 import { createClient } from "@supabase/supabase-js"
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
 
-// Client for browser usage (limited permissions)
-export const supabaseClient = createClient(supabaseUrl, supabaseAnonKey)
-
-// Server-side client with admin privileges
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+export const supabaseAdmin = createClient(supabaseUrl, supabaseKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false,
   },
 })
 
-// Types for our database tables
-export type Question = {
-  id: string
-  type: "baby-picture" | "text"
-  question: string
-  image_url?: string
-  options: string[]
-  correct_answer: string
-  created_at: string
-}
+// Generate a signed URL for a private file in Supabase Storage
+export async function getSignedUrl(path: string): Promise<string> {
+  if (!path) return ""
 
-export type Participant = {
-  id: string
-  name: string
-  created_at: string
-}
+  // Extract bucket and file path from the stored path
+  // Format could be either "baby-pictures/filename.jpg" or a full URL
+  let bucket = "baby-pictures"
+  let filePath = path
 
-export type Answer = {
-  id: string
-  participant_id: string
-  question_id: string
-  answer: string
-  is_correct: boolean
-  created_at: string
-}
+  if (path.includes("://")) {
+    // It's a full URL, extract the filename
+    filePath = path.split("/").pop() || ""
+  } else if (path.includes("/")) {
+    // It's in format "bucket/filename"
+    const parts = path.split("/")
+    bucket = parts[0]
+    filePath = parts.slice(1).join("/")
+  }
 
-export type Game = {
-  id: string
-  current_question_id: string | null
-  status: "waiting" | "active" | "results"
-  created_at: string
+  try {
+    // Generate a signed URL that expires in 24 hours (changed from 1 hour)
+    const { data, error } = await supabaseAdmin.storage.from(bucket).createSignedUrl(filePath, 60 * 60 * 24) // 24 hour expiry
+
+    if (error) {
+      console.error("Error generating signed URL:", error)
+      return ""
+    }
+
+    return data.signedUrl
+  } catch (error) {
+    console.error("Error generating signed URL:", error)
+    return ""
+  }
 }
