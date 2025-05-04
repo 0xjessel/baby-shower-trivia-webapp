@@ -248,11 +248,24 @@ export default function GamePage() {
         totalVotes: number
         questionId: string
         timestamp: string
+        source?: string
       }) => {
         console.log("Vote update received via Pusher:", data)
 
         // Only update if this is for the current question
         if (currentQuestionRef.current && data.questionId === currentQuestionRef.current) {
+          // Check if this is a vote from another guest
+          const isFromOtherGuest = data.source !== "submitAnswer" || submittedAnswer !== selectedAnswer
+
+          if (isFromOtherGuest) {
+            console.log("📊 GUEST VOTE UPDATE: Received vote from another guest", {
+              questionId: data.questionId,
+              totalVotes: data.totalVotes,
+              timestamp: data.timestamp,
+              voteCounts: data.voteCounts,
+            })
+          }
+
           // Always update the vote counts to ensure real-time updates
           console.log("Updating vote counts from Pusher event")
           setVoteCounts(data.voteCounts)
