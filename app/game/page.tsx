@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -421,12 +419,7 @@ export default function GamePage() {
   }
 
   // Modify the handleAddCustomAnswer function to prevent page refresh and update the hasAddedCustomAnswer state
-  const handleAddCustomAnswer = async (e?: React.FormEvent) => {
-    // Prevent form submission if an event is passed
-    if (e) {
-      e.preventDefault()
-    }
-
+  const handleAddCustomAnswer = async () => {
     if (!newCustomAnswer.trim() || !currentQuestion || timeIsUp) return
 
     setIsSubmittingCustom(true)
@@ -436,10 +429,6 @@ export default function GamePage() {
 
       if (result.success && result.customAnswer) {
         setNewCustomAnswer("")
-        toast({
-          title: "Custom answer added!",
-          description: "Your answer has been submitted.",
-        })
 
         // Add the custom answer to the local state immediately
         const newCustomAnswerObj = result.customAnswer
@@ -463,6 +452,11 @@ export default function GamePage() {
 
         // Set that the user has added a custom answer
         setHasAddedCustomAnswer(true)
+
+        toast({
+          title: "Custom answer added!",
+          description: "Your answer has been submitted.",
+        })
       } else {
         toast({
           title: "Error",
@@ -605,10 +599,7 @@ export default function GamePage() {
               })}
 
               {currentQuestion.allowsCustomAnswers !== false && !timeIsUp && !hasAddedCustomAnswer && (
-                <form
-                  onSubmit={handleAddCustomAnswer}
-                  className="relative flex items-center rounded-lg border border-arcane-blue/20 bg-arcane-navy/50 p-3 transition-colors"
-                >
+                <div className="relative flex items-center rounded-lg border border-arcane-blue/20 bg-arcane-navy/50 p-3 transition-colors">
                   <RadioGroupItem
                     value="__custom__"
                     id="option-custom"
@@ -624,15 +615,19 @@ export default function GamePage() {
                       disabled={isSubmittingCustom || timeIsUp}
                     />
                     <Button
-                      type="submit"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        handleAddCustomAnswer()
+                      }}
                       disabled={!newCustomAnswer.trim() || isSubmittingCustom || timeIsUp}
                       className="bg-arcane-gold hover:bg-arcane-gold/80 text-arcane-navy h-8 w-8 p-0 rounded-full"
                       size="icon"
+                      type="button"
                     >
                       <Send className="h-4 w-4" />
                     </Button>
                   </div>
-                </form>
+                </div>
               )}
             </RadioGroup>
 
