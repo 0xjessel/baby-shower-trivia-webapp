@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { PlusCircle, X } from "lucide-react"
+import { PlusCircle, X, Trash2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -22,6 +22,8 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
   const [options, setOptions] = useState<string[]>(["", "", "", ""])
   const [correctAnswer, setCorrectAnswer] = useState<number>(0)
   const [hasNoCorrectAnswer, setHasNoCorrectAnswer] = useState(false)
+  const [allowsCustomAnswers, setAllowsCustomAnswers] = useState(true)
+  const [noPrefilledOptions, setNoPrefilledOptions] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
@@ -51,6 +53,13 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
     fetchGames()
   }, [])
 
+  // If custom answers are disabled, we can't have no prefilled options
+  useEffect(() => {
+    if (!allowsCustomAnswers && noPrefilledOptions) {
+      setNoPrefilledOptions(false)
+    }
+  }, [allowsCustomAnswers, noPrefilledOptions])
+
   const handleOptionChange = (index: number, value: string) => {
     const newOptions = [...options]
     newOptions[index] = value
@@ -62,7 +71,7 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
   }
 
   const removeOption = (index: number) => {
-    if (options.length <= 2) return
+    if (options.length <= 2 && !noPrefilledOptions) return
 
     const newOptions = options.filter((_, i) => i !== index)
     setOptions(newOptions)
@@ -74,11 +83,29 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
     }
   }
 
+  const clearAllOptions = () => {
+    setOptions([])
+    setCorrectAnswer(0)
+  }
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setIsSubmitting(true)
     setError("")
     setSuccess(false)
+
+    // Validation
+    if (!noPrefilledOptions && options.filter((o) => o.trim()).length < 2) {
+      setError("At least 2 options are required unless 'No prefilled options' is enabled")
+      setIsSubmitting(false)
+      return
+    }
+
+    if (noPrefilledOptions && !allowsCustomAnswers) {
+      setError("Custom answers must be enabled when using 'No prefilled options'")
+      setIsSubmitting(false)
+      return
+    }
 
     const form = e.currentTarget
     const formData = new FormData(form)
@@ -86,13 +113,20 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
     // Explicitly add the question type to the form data
     formData.append("type", questionType)
 
-    // Add options and correct answer to form data
-    options.forEach((option, index) => {
-      formData.append(`option_${index}`, option)
-    })
+    // Add options to form data (regardless of whether there's a correct answer)
+    if (!noPrefilledOptions) {
+      options.forEach((option, index) => {
+        if (option.trim()) {
+          formData.append(`option_${index}`, option)
+        }
+      })
+    }
+
+    // Handle the case of no prefilled options
+    formData.append("no_prefilled_options", noPrefilledOptions ? "true" : "false")
 
     // Handle the case of no correct answer
-    if (hasNoCorrectAnswer) {
+    if (hasNoCorrectAnswer || noPrefilledOptions) {
       formData.append("no_correct_answer", "true")
       formData.append("correctAnswerIndex", "-1")
     } else {
@@ -108,7 +142,9 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
         setOptions(["", "", "", ""])
         setCorrectAnswer(0)
         setHasNoCorrectAnswer(false)
+        setNoPrefilledOptions(false)
         setQuestionType("baby-picture")
+        setAllowsCustomAnswers(true)
       } else {
         setError(result.error || "Failed to add question")
       }
@@ -199,108 +235,168 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
           </div>
         )}
 
-        <div>
-          <div className="flex items-center justify-between">
-            <Label className="text-arcane-gray-light">Answer Options</Label>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={addOption}
-              className="h-8 text-xs border-arcane-gold text-arcane-gold hover:bg-arcane-gold/10"
-            >
-              <PlusCircle className="mr-1 h-3 w-3" />
-              Add Option
-            </Button>
+        <div className="flex items-center justify-between">
+          <div>
+            <Label htmlFor="allows-custom-answers" className="text-arcane-gray-light">
+              Allow Custom Answers
+            </Label>
+            <p className="text-xs text-arcane-gray">When enabled, guests can add their own answer options.</p>
           </div>
+          <Switch
+            id="allows-custom-answers"
+            name="allows_custom_answers"
+            checked={allowsCustomAnswers}
+            onCheckedChange={setAllowsCustomAnswers}
+            className="data-[state=checked]:bg-arcane-blue"
+          />
+        </div>
 
-          <div className="mt-2 space-y-3">
-            <div className="flex items-center space-x-2 mb-2">
-              <Checkbox
-                id="no-correct-answer"
-                checked={hasNoCorrectAnswer}
-                onCheckedChange={(checked) => setHasNoCorrectAnswer(checked === true)}
-                className="data-[state=checked]:bg-arcane-blue data-[state=checked]:border-arcane-blue"
-              />
-              <Label htmlFor="no-correct-answer" className="text-arcane-gray-light">
-                No correct answer (opinion question)
-              </Label>
+        <div className="flex items-center space-x-2 mb-2">
+          <Checkbox
+            id="no-prefilled-options"
+            checked={noPrefilledOptions}
+            onCheckedChange={(checked) => {
+              const isChecked = checked === true
+              setNoPrefilledOptions(isChecked)
+              if (isChecked) {
+                // If enabling no prefilled options, ensure custom answers are enabled
+                setAllowsCustomAnswers(true)
+                // Also ensure no correct answer is selected
+                setHasNoCorrectAnswer(true)
+              }
+            }}
+            className="data-[state=checked]:bg-arcane-blue data-[state=checked]:border-arcane-blue"
+            disabled={!allowsCustomAnswers}
+          />
+          <Label
+            htmlFor="no-prefilled-options"
+            className={`${!allowsCustomAnswers ? "text-arcane-gray" : "text-arcane-gray-light"}`}
+          >
+            No prefilled options (all answers will be submitted by guests)
+          </Label>
+        </div>
+
+        {!noPrefilledOptions && (
+          <div className="flex items-center space-x-2 mb-2">
+            <Checkbox
+              id="no-correct-answer"
+              checked={hasNoCorrectAnswer}
+              onCheckedChange={(checked) => setHasNoCorrectAnswer(checked === true)}
+              className="data-[state=checked]:bg-arcane-blue data-[state=checked]:border-arcane-blue"
+            />
+            <Label htmlFor="no-correct-answer" className="text-arcane-gray-light">
+              No correct answer (opinion question)
+            </Label>
+          </div>
+        )}
+
+        {!noPrefilledOptions && (
+          <div>
+            <div className="flex items-center justify-between">
+              <Label className="text-arcane-gray-light">Answer Options</Label>
+              <div className="flex space-x-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addOption}
+                  className="h-8 text-xs border-arcane-gold text-arcane-gold hover:bg-arcane-gold/10"
+                >
+                  <PlusCircle className="mr-1 h-3 w-3" />
+                  Add Option
+                </Button>
+                {options.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={clearAllOptions}
+                    className="h-8 text-xs border-red-500 text-red-500 hover:bg-red-500/10"
+                  >
+                    <Trash2 className="mr-1 h-3 w-3" />
+                    Clear All
+                  </Button>
+                )}
+              </div>
             </div>
 
-            {!hasNoCorrectAnswer && (
-              <RadioGroup
-                value={correctAnswer.toString()}
-                onValueChange={(value) => setCorrectAnswer(Number.parseInt(value))}
-                name="correctAnswer"
-              >
-                {options.map((option, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <RadioGroupItem value={index.toString()} id={`correct-${index}`} className="text-arcane-blue" />
-                    <Input
-                      value={option}
-                      onChange={(e) => handleOptionChange(index, e.target.value)}
-                      placeholder={`Option ${index + 1}`}
-                      className="border-arcane-blue/30 bg-arcane-navy/50 text-arcane-gray-light focus:border-arcane-blue focus:ring-arcane-blue"
-                      required
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeOption(index)}
-                      disabled={options.length <= 2}
-                      className="h-8 w-8 text-arcane-gray"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </RadioGroup>
-            )}
+            <div className="mt-2 space-y-3">
+              {/* Only show radio buttons if there is a correct answer */}
+              {!hasNoCorrectAnswer ? (
+                <RadioGroup
+                  value={correctAnswer.toString()}
+                  onValueChange={(value) => setCorrectAnswer(Number.parseInt(value))}
+                  name="correctAnswer"
+                >
+                  {options.map((option, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <RadioGroupItem value={index.toString()} id={`correct-${index}`} className="text-arcane-blue" />
+                      <Input
+                        value={option}
+                        onChange={(e) => handleOptionChange(index, e.target.value)}
+                        placeholder={`Option ${index + 1}`}
+                        className="border-arcane-blue/30 bg-arcane-navy/50 text-arcane-gray-light focus:border-arcane-blue focus:ring-arcane-blue"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeOption(index)}
+                        className="h-8 w-8 text-arcane-gray"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </RadioGroup>
+              ) : (
+                // When "No correct answer" is checked, show options without radio buttons
+                <>
+                  {options.map((option, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <div className="w-5"></div> {/* Spacer to align with radio buttons */}
+                      <Input
+                        value={option}
+                        onChange={(e) => handleOptionChange(index, e.target.value)}
+                        placeholder={`Option ${index + 1}`}
+                        className="border-arcane-blue/30 bg-arcane-navy/50 text-arcane-gray-light focus:border-arcane-blue focus:ring-arcane-blue"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeOption(index)}
+                        className="h-8 w-8 text-arcane-gray"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </>
+              )}
 
-            {hasNoCorrectAnswer && (
-              <>
-                {options.map((option, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <div className="w-5"></div> {/* Spacer to align with radio buttons */}
-                    <Input
-                      value={option}
-                      onChange={(e) => handleOptionChange(index, e.target.value)}
-                      placeholder={`Option ${index + 1}`}
-                      className="border-arcane-blue/30 bg-arcane-navy/50 text-arcane-gray-light focus:border-arcane-blue focus:ring-arcane-blue"
-                      required
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeOption(index)}
-                      disabled={options.length <= 2}
-                      className="h-8 w-8 text-arcane-gray"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </>
-            )}
+              {options.length === 0 && (
+                <div className="text-center py-4 text-arcane-gray italic">
+                  No options added. Click "Add Option" to add answer choices.
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
+        )}
 
-      <div className="flex items-center justify-between">
-        <div>
-          <Label htmlFor="allows-custom-answers" className="text-arcane-gray-light">
-            Allow Custom Answers
-          </Label>
-          <p className="text-xs text-arcane-gray">When enabled, guests can add their own answer options.</p>
-        </div>
-        <Switch
-          id="allows-custom-answers"
-          name="allows_custom_answers"
-          defaultChecked={true}
-          className="data-[state=checked]:bg-arcane-blue"
-        />
+        {hasNoCorrectAnswer && !noPrefilledOptions && (
+          <div className="rounded-md border border-arcane-blue/30 bg-arcane-navy/20 p-4 text-arcane-gray-light">
+            <p className="text-center">
+              This question has no correct answer. All options will be treated as opinion-based responses.
+            </p>
+          </div>
+        )}
+
+        {noPrefilledOptions && (
+          <div className="rounded-md border border-arcane-blue/30 bg-arcane-navy/20 p-4 text-arcane-gray-light">
+            <p className="text-center">All answer options will be submitted by guests during the game.</p>
+          </div>
+        )}
       </div>
 
       {error && (

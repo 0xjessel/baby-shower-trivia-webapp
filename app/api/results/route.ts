@@ -101,7 +101,7 @@ export async function GET() {
     // Filter out any null results
     const validResults = results.filter((r) => r !== null)
 
-    // Get participant ranking
+    // Get participant rankings
     const { data: rankings, error: rankingsError } = await supabaseAdmin.rpc("get_participant_rankings")
 
     if (rankingsError) {
@@ -114,11 +114,22 @@ export async function GET() {
     const rank = participantRanking ? participantRanking.rank : null
     const totalParticipants = rankings.length
 
+    // Get top 3 winners
+    const topWinners = rankings
+      .filter((r) => r.rank <= 3)
+      .map((r) => ({
+        name: r.participant_name,
+        rank: r.rank,
+        score: r.correct_answers,
+      }))
+      .sort((a, b) => a.rank - b.rank)
+
     return NextResponse.json({
       results: validResults,
       rank,
       totalParticipants,
       totalCorrect: participantRanking ? participantRanking.correct_answers : 0,
+      topWinners,
     })
   } catch (error) {
     console.error("Error fetching results:", error)

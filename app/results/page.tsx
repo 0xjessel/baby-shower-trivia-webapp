@@ -1,13 +1,12 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
 import { usePusher } from "@/hooks/use-pusher"
 import { EVENTS } from "@/lib/pusher-client"
 import PlayerHeartbeat from "@/components/player-heartbeat"
-import confetti from "canvas-confetti"
 import { Trophy, Medal, Award } from "lucide-react"
 
 // Add this export to disable static generation for this page
@@ -22,6 +21,12 @@ interface ResultItem {
   isCorrect: boolean
 }
 
+interface Winner {
+  name: string
+  rank: number
+  score: number
+}
+
 export default function ResultsPage() {
   const [results, setResults] = useState<ResultItem[]>([])
   const [score, setScore] = useState({ correct: 0, total: 0 })
@@ -29,8 +34,11 @@ export default function ResultsPage() {
   const [isWaiting, setIsWaiting] = useState(false)
   const [rank, setRank] = useState<number | null>(null)
   const [totalParticipants, setTotalParticipants] = useState(0)
+  const [topWinners, setTopWinners] = useState<Winner[]>([])
+  const confettiRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const { gameChannel, isLoading: isPusherLoading } = usePusher()
+  const [confettiLoaded, setConfettiLoaded] = useState(false)
 
   useEffect(() => {
     // Ensure this code only runs in the browser
@@ -42,6 +50,12 @@ export default function ResultsPage() {
       router.push("/join")
       return
     }
+
+    // Dynamically import confetti
+    import("canvas-confetti").then((confettiModule) => {
+      window.confetti = confettiModule.default
+      setConfettiLoaded(true)
+    })
 
     fetchResults()
   }, [router])
@@ -70,6 +84,8 @@ export default function ResultsPage() {
 
   // Celebration effect for top 3 players
   useEffect(() => {
+    if (!confettiLoaded || !window.confetti) return
+
     if (rank === 1) {
       // Gold celebration for 1st place
       const duration = 5 * 1000
@@ -86,7 +102,7 @@ export default function ResultsPage() {
         const particleCount = 50 * (timeLeft / duration)
 
         // Gold confetti
-        confetti({
+        window.confetti({
           ...defaults,
           particleCount,
           origin: { x: Math.random(), y: Math.random() * 0.5 },
@@ -95,7 +111,7 @@ export default function ResultsPage() {
       }, 250)
     } else if (rank === 2) {
       // Silver celebration for 2nd place
-      confetti({
+      window.confetti({
         particleCount: 100,
         spread: 70,
         origin: { y: 0.6 },
@@ -103,14 +119,14 @@ export default function ResultsPage() {
       })
     } else if (rank === 3) {
       // Bronze celebration for 3rd place
-      confetti({
+      window.confetti({
         particleCount: 50,
         spread: 50,
         origin: { y: 0.7 },
         colors: ["#CD7F32", "#B87333", "#D2691E"],
       })
     }
-  }, [rank])
+  }, [rank, confettiLoaded])
 
   const fetchResults = async () => {
     try {
@@ -133,6 +149,7 @@ export default function ResultsPage() {
         })
         setRank(data.rank)
         setTotalParticipants(data.totalParticipants)
+        setTopWinners(data.topWinners || [])
         setIsWaiting(false)
         setIsLoading(false)
       }
@@ -175,6 +192,43 @@ export default function ResultsPage() {
     }
   }
 
+  const renderWinnersPodium = () => {
+    return (
+      <div className="mb-8 mt-4">
+        <h2 className="text-xl font-bold text-center mb-4 text-arcane-blue">Leaderboard</h2>
+        <div className="flex flex-col gap-2">
+          {topWinners.map((winner) => (
+            <div
+              key={winner.rank}
+              className={`flex items-center p-3 rounded-lg ${
+                winner.rank === 1
+                  ? "bg-yellow-500/20 border border-yellow-500/50"
+                  : winner.rank === 2
+                    ? "bg-gray-400/20 border border-gray-400/50"
+                    : "bg-amber-700/20 border border-amber-700/50"
+              }`}
+            >
+              <div className="mr-3">
+                {winner.rank === 1 ? (
+                  <Trophy className="h-6 w-6 text-yellow-400" />
+                ) : winner.rank === 2 ? (
+                  <Medal className="h-6 w-6 text-gray-300" />
+                ) : (
+                  <Award className="h-6 w-6 text-amber-700" />
+                )}
+              </div>
+              <div className="flex-1">
+                <div className="font-bold text-arcane-gray-light">{winner.name}</div>
+                <div className="text-sm text-arcane-gray">{winner.score} correct answers</div>
+              </div>
+              <div className="text-2xl font-bold">{winner.rank === 1 ? "🥇" : winner.rank === 2 ? "🥈" : "🥉"}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   if (isPusherLoading || isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-arcane-navy">
@@ -201,6 +255,9 @@ export default function ResultsPage() {
 
   return (
     <div className="min-h-screen bg-arcane-navy p-4">
+      {/* Confetti container */}
+      <div ref={confettiRef} className="fixed inset-0 pointer-events-none z-50"></div>
+
       {/* Include the heartbeat component */}
       <PlayerHeartbeat />
 
@@ -212,8 +269,11 @@ export default function ResultsPage() {
           </p>
 
           {/* Display rank with animation for top 3 */}
-          <div className="mt-4 mb-6">{getRankDisplay()}</div>
+          <div className="mt-4 mb-2">{getRankDisplay()}</div>
         </div>
+
+        {/* Winners podium */}
+        {topWinners.length > 0 && renderWinnersPodium()}
 
         <div className="space-y-4">
           {results.map((result, index) => (

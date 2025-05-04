@@ -1038,24 +1038,38 @@ export async function uploadQuestion(formData: FormData) {
       return { success: false, error: "Selected game not found" }
     }
 
+    // Check if this is a question with no prefilled options
+    const noPrefilledOptions = formData.get("no_prefilled_options") === "true"
+
     // Get options
     const options: string[] = []
     let correctAnswerIndex = Number.parseInt(formData.get("correctAnswerIndex") as string) || 0
     const noCorrectAnswer = formData.get("no_correct_answer") === "true"
 
-    for (let i = 0; i < 10; i++) {
-      const option = formData.get(`option_${i}`)
-      if (option) {
-        options.push(option as string)
+    // Only collect options if we're not using the "no prefilled options" mode
+    if (!noPrefilledOptions) {
+      for (let i = 0; i < 10; i++) {
+        const option = formData.get(`option_${i}`)
+        if (option && (option as string).trim()) {
+          options.push((option as string).trim())
+        }
+      }
+
+      // Validate options unless we're in "no prefilled options" mode
+      if (options.length < 2 && !noPrefilledOptions) {
+        return { success: false, error: "At least 2 options are required" }
+      }
+
+      if (correctAnswerIndex >= options.length) {
+        correctAnswerIndex = 0
       }
     }
 
-    if (options.length < 2) {
-      return { success: false, error: "At least 2 options are required" }
-    }
+    // Make sure custom answers are enabled if there are no prefilled options
+    const allowsCustomAnswers = formData.get("allows_custom_answers") !== "false"
 
-    if (correctAnswerIndex >= options.length) {
-      correctAnswerIndex = 0
+    if (noPrefilledOptions && !allowsCustomAnswers) {
+      return { success: false, error: "Custom answers must be enabled when using no prefilled options" }
     }
 
     let imageUrl = undefined
@@ -1110,7 +1124,6 @@ export async function uploadQuestion(formData: FormData) {
 
     // Insert the question into the database with a proper UUID
     const questionId = generateUUID()
-    const allowsCustomAnswers = formData.get("allows_custom_answers") !== "false"
 
     const { error } = await supabaseAdmin.from("questions").insert({
       id: questionId,
@@ -1118,7 +1131,7 @@ export async function uploadQuestion(formData: FormData) {
       question: questionText,
       image_url: imageUrl,
       options: options,
-      correct_answer: noCorrectAnswer ? null : options[correctAnswerIndex],
+      correct_answer: noCorrectAnswer || noPrefilledOptions ? null : options[correctAnswerIndex],
       allows_custom_answers: allowsCustomAnswers,
       game_id: gameId, // Associate with the selected game
     })
