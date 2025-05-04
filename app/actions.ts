@@ -1525,3 +1525,107 @@ export async function deleteGame(gameId: string) {
     return { success: false, error: "Failed to delete game" }
   }
 }
+
+// Add this new server action to update a question
+export async function updateQuestion(
+  questionId: string,
+  updates: {
+    allows_custom_answers?: boolean
+    question?: string
+    options?: string[]
+    correct_answer?: string
+    no_correct_answer?: boolean
+  },
+) {
+  // Check if admin is authenticated
+  const adminToken = cookies().get("adminToken")?.value
+  if (!adminToken) {
+    console.log("[SERVER] updateQuestion: Unauthorized - no admin token")
+    return { success: false, error: "Unauthorized" }
+  }
+
+  try {
+    console.log(`[SERVER] updateQuestion: Starting question update process for ${questionId}`)
+    console.log(`[SERVER] updateQuestion: Updates:`, updates)
+
+    // Get the current question data
+    const { data: question, error: getError } = await supabaseAdmin
+      .from("questions")
+      .select("*")
+      .eq("id", questionId)
+      .single()
+
+    if (getError) {
+      console.error("[SERVER] updateQuestion: Error fetching question:", getError)
+      return { success: false, error: "Question not found" }
+    }
+
+    // If we're disabling custom answers, delete all custom answers for this question
+    if (updates.allows_custom_answers === false) {
+      console.log(`[SERVER] updateQuestion: Disabling custom answers, deleting existing custom answers`)
+
+      // First, get all custom answers to log them
+      const { data: customAnswers, error: fetchError } = await supabaseAdmin
+        .from("answer_options")
+        .select("id, text")
+        .eq("question_id", questionId)
+        .eq("is_custom", true)
+
+      if (fetchError) {
+        console.error("[SERVER] updateQuestion: Error fetching custom answers:", fetchError)
+      } else {
+        console.log(`[SERVER] updateQuestion: Found ${customAnswers?.length || 0} custom answers to delete`)
+      }
+
+      // Delete all custom answers for this question
+      const { error: deleteError } = await supabaseAdmin
+        .from("answer_options")
+        .delete()
+        .eq("question_id", questionId)
+        .eq("is_custom", true)
+
+      if (deleteError) {
+        console.error("[SERVER] updateQuestion: Error deleting custom answers:", deleteError)
+        return { success: false, error: "Failed to delete custom answers" }
+      }
+
+      console.log(`[SERVER] updateQuestion: Successfully deleted custom answers`)
+    }
+
+    // Handle correct answer updates
+    let correctAnswer = updates.correct_answer
+
+    // If no_correct_answer is being set to true, we need to set a placeholder correct answer
+    if (updates.no_correct_answer === true) {
+      const options = updates.options || question.options
+      correctAnswer = options.length > 0 ? options[0] : "NONE"
+      console.log(`[SERVER] updateQuestion: Setting placeholder correct answer: ${correctAnswer}`)
+    }
+
+    // Prepare the update data
+    const updateData: any = {
+      ...updates,
+    }
+
+    // Only include correct_answer if it's being updated
+    if (correctAnswer !== undefined) {
+      updateData.correct_answer = correctAnswer
+    }
+
+    // Update the question
+    const { error: updateError } = await supabaseAdmin.from("questions").update(updateData).eq("id", questionId)
+
+    if (updateError) {
+      console.error("[SERVER] updateQuestion: Error updating question:", updateError)
+      return { success: false, error: "Failed to update question" }
+    }
+
+    console.log(`[SERVER] updateQuestion: Question updated successfully`)
+    revalidatePath("/admin/dashboard")
+
+    return { success: true }
+  } catch (error) {
+    console.error("[SERVER] updateQuestion: Error:", error)
+    return { success: false, error: "An unexpected error occurred" }
+  }
+}
