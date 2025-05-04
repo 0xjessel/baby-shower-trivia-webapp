@@ -296,15 +296,23 @@ export default function GamePage() {
 
         // Only update if this is for the current question
         if (currentQuestionRef.current && data.questionId === currentQuestionRef.current) {
-          // Update vote counts to include the new custom answer
-          setVoteCounts((prev) => ({
-            ...prev,
-            [data.customAnswer.text]: 0,
-          }))
+          // Check if we already have this custom answer
+          const exists = customAnswers.some((ca) => ca.id === data.customAnswer.id)
 
-          // Fetch updated vote counts
-          console.log("[DEBUG] Fetching updated vote counts")
-          fetchVoteCounts(data.questionId)
+          if (!exists) {
+            // Add the new custom answer to the list
+            setCustomAnswers((prev) => [...prev, data.customAnswer])
+
+            // Update vote counts to include the new custom answer
+            setVoteCounts((prev) => ({
+              ...prev,
+              [data.customAnswer.text]: 0,
+            }))
+
+            // Fetch updated vote counts
+            console.log("[DEBUG] Fetching updated vote counts")
+            fetchVoteCounts(data.questionId)
+          }
         }
       },
     )
@@ -341,7 +349,7 @@ export default function GamePage() {
       gameChannel.unbind(EVENTS.SHOW_RESULTS)
       gameChannel.unbind(EVENTS.GAME_RESET)
     }
-  }, [gameChannel, router, fetchCurrentQuestion, fetchVoteCounts])
+  }, [gameChannel, router, fetchCurrentQuestion, fetchVoteCounts, customAnswers])
 
   // Handle answer selection
   const handleAnswerChange = async (value: string) => {
