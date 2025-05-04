@@ -219,6 +219,22 @@ export default function GamePage() {
     // Listen for question updates
     gameChannel.bind(EVENTS.QUESTION_UPDATE, (data: { question: Question; timestamp?: number }) => {
       console.log("Received question update via Pusher:", data.question.id)
+
+      // Instead of just fetching the current question, we need to reset state and fetch the new question
+      setCurrentQuestion(null)
+      setSelectedAnswer("")
+      setSubmittedAnswer("")
+      setHasSubmitted(false)
+      setIsWaiting(false)
+      setTimerActive(false)
+      setTimeIsUp(false)
+      setVoteCounts({})
+      setTotalVotes(0)
+      setCustomAnswers([])
+      currentQuestionRef.current = null
+      lastVoteUpdateId.current = null
+
+      // Fetch the new question
       fetchCurrentQuestion()
     })
 
@@ -236,15 +252,13 @@ export default function GamePage() {
         // Only update if this is for the current question
         if (currentQuestionRef.current && data.questionId === currentQuestionRef.current) {
           // Generate a unique ID for this update
-          const updateId = `${data.questionId}-${data.timestamp}`
+          const updateId = `${data.questionId}-${data.timestamp || Date.now()}`
 
-          // Only update if this is different from the last update we processed
-          if (updateId !== lastVoteUpdateId.current) {
-            console.log("Updating vote counts from Pusher event")
-            setVoteCounts(data.voteCounts)
-            setTotalVotes(data.totalVotes)
-            lastVoteUpdateId.current = updateId
-          }
+          // Always update the vote counts to ensure real-time updates
+          console.log("Updating vote counts from Pusher event")
+          setVoteCounts(data.voteCounts)
+          setTotalVotes(data.totalVotes)
+          lastVoteUpdateId.current = updateId
         }
       },
     )
