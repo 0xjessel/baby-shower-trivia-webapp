@@ -13,6 +13,7 @@ export function useGameState() {
   const router = useRouter()
   const playerNameRef = useRef<string>("")
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(false)
+  const previousQuestionIdRef = useRef<string | null>(null)
 
   // Question state
   const {
@@ -100,6 +101,15 @@ export function useGameState() {
     }
   }, [currentQuestion, customAnswers, timeIsUp])
 
+  // Reset hasAddedCustomAnswer when the question changes
+  useEffect(() => {
+    if (currentQuestion && previousQuestionIdRef.current !== currentQuestion.id) {
+      console.log("[DEBUG] Question changed, resetting hasAddedCustomAnswer")
+      setHasAddedCustomAnswer(false)
+      previousQuestionIdRef.current = currentQuestion.id
+    }
+  }, [currentQuestion, setHasAddedCustomAnswer])
+
   // Initial setup - fetch question and set up authentication
   useEffect(() => {
     // Ensure this code only runs in the browser
@@ -132,6 +142,10 @@ export function useGameState() {
           setHasSubmitted(false)
         }
 
+        // Reset hasAddedCustomAnswer for the new question
+        setHasAddedCustomAnswer(false)
+        previousQuestionIdRef.current = result.question.id
+
         // Fetch initial vote counts
         fetchVoteCounts(result.question.id, result.question.id)
       }
@@ -144,6 +158,7 @@ export function useGameState() {
     setSubmittedAnswer,
     setHasSubmitted,
     fetchVoteCounts,
+    setHasAddedCustomAnswer,
   ])
 
   // Wrapper functions that use stateRef to access current state

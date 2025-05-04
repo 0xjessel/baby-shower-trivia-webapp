@@ -2,182 +2,97 @@
 
 import type React from "react"
 
-import { useEffect, useRef, useCallback } from "react"
-import { usePusher } from "@/hooks/use-pusher"
-import type { CustomAnswer } from "@/types/game"
-import { isDuplicateCustomAnswer } from "@/lib/game-utils"
-
-// Map to track processed events by ID to prevent duplicates
-const processedEvents = new Map<string, boolean>()
+import { useEffect, useRef } from "react"
+import { pusherClient } from "@/lib/pusher-client"
+import type { Question, CustomAnswer } from "@/types/game"
 
 export function usePusherEvents(
-  currentQuestionRef: React.RefObject<string | null>,
+  currentQuestionRef: React.MutableRefObject<Question | null>,
   customAnswers: CustomAnswer[],
   setCustomAnswers: (answers: CustomAnswer[]) => void,
   setVoteCounts: (counts: any) => void,
   setTotalVotes: (total: number) => void,
   fetchCurrentQuestion: () => Promise<any>,
-  fetchVoteCounts: (questionId: string) => Promise<void>,
-  setIsLoadingQuestion: (loading: boolean) => void,
+  fetchVoteCounts: (questionId: string, updateId?: string) => Promise<void>,
+  setIsLoadingQuestion: (isLoading: boolean) => void,
 ) {
-  const { gameChannel } = usePusher()
-
-  // Track if we've already set up event listeners
+  // Use a ref to track if events have been set up
   const eventsSetupRef = useRef(false)
 
-  // Track the last event timestamp to prevent duplicates
-  const lastEventTimestampRef = useRef<Record<string, number>>({
-    "custom-answer-added": 0,
-    "vote-update": 0,
-    "question-update": 0,
-    "loading-question": 0,
-  })
+  // Set up Pusher events
+  useEffect(() => {
+    // Skip if events are already set up
+    if (eventsSetupRef.current) return
 
-  // Handle custom answer added event
-  const handleCustomAnswerAdded = useCallback(
-    (data: any) => {
-      // Check if we've already processed this exact event
-      const eventId = `custom-answer-${data.customAnswer.id}-${data.timestamp}`
-      if (processedEvents.has(eventId)) {
-        console.log("[DEBUG] Skipping already processed custom answer event:", eventId)
-        return
-      }
+    console.log("[DEBUG] Setting up Pusher events")
 
-      // Check if this is a stale event (older than the last one we processed)
-      if (data.timestamp && data.timestamp <= lastEventTimestampRef.current["custom-answer-added"]) {
-        console.log("[DEBUG] Skipping stale custom answer event:", data.timestamp)
-        return
-      }
+    // Subscribe to the game channel
+    const channel = pusherClient.subscribe("game-events")
 
-      // Update the last timestamp
-      if (data.timestamp) {
-        lastEventTimestampRef.current["custom-answer-added"] = data.timestamp
-      }
-
-      // Mark this event as processed
-      processedEvents.set(eventId, true)
-
-      console.log("[DEBUG] CUSTOM_ANSWER_ADDED event received:", data)
-
-      // Check if this event is for the current question
-      if (currentQuestionRef.current === data.questionId) {
-        console.log("[DEBUG] Current question ID:", currentQuestionRef.current)
-        console.log("[DEBUG] Event question ID:", data.questionId)
-
-        // Only add the custom answer if it's not a duplicate
-        if (!isDuplicateCustomAnswer(data.customAnswer, customAnswers)) {
-          console.log("[DEBUG] Adding new custom answer from another participant")
-          setCustomAnswers([...customAnswers, data.customAnswer])
-
-          // Update vote counts if provided
-          if (data.voteCounts) {
-            setVoteCounts(data.voteCounts)
-            setTotalVotes(data.totalVotes || 0)
-          } else {
-            // Fetch updated vote counts if not provided in the event
-            console.log("[DEBUG] Fetching updated vote counts")
-            fetchVoteCounts(data.questionId)
-          }
-        } else {
-          console.log("[DEBUG] Ignoring duplicate custom answer:", data.customAnswer.text)
-        }
-      }
-    },
-    [customAnswers, setCustomAnswers, setVoteCounts, setTotalVotes, fetchVoteCounts, currentQuestionRef],
-  )
-
-  // Handle vote counts updated event
-  const handleVoteCountsUpdated = useCallback(
-    (data: any) => {
-      // Check if this is a stale event (older than the last one we processed)
-      if (data.timestamp && data.timestamp <= lastEventTimestampRef.current["vote-update"]) {
-        console.log("[DEBUG] Skipping stale vote update event:", data.timestamp)
-        return
-      }
-
-      // Update the last timestamp
-      if (data.timestamp) {
-        lastEventTimestampRef.current["vote-update"] = data.timestamp
-      }
-
-      console.log("[DEBUG] VOTE_UPDATE event received:", data)
-      if (currentQuestionRef.current === data.questionId) {
-        fetchVoteCounts(data.questionId)
-      }
-    },
-    [fetchVoteCounts, currentQuestionRef],
-  )
-
-  // Handle question updated event
-  const handleQuestionUpdated = useCallback(
-    (data: any) => {
-      // Check if this is a stale event (older than the last one we processed)
-      if (data.timestamp && data.timestamp <= lastEventTimestampRef.current["question-update"]) {
-        console.log("[DEBUG] Skipping stale question update event:", data.timestamp)
-        return
-      }
-
-      // Update the last timestamp
-      if (data.timestamp) {
-        lastEventTimestampRef.current["question-update"] = data.timestamp
-      }
-
-      console.log("[DEBUG] QUESTION_UPDATE event received:", data)
+    // Handle new question event
+    const handleNewQuestion = (data: any) => {
+      console.log("[DEBUG] New question event received:", data)
       setIsLoadingQuestion(false)
       fetchCurrentQuestion()
-    },
-    [fetchCurrentQuestion, setIsLoadingQuestion],
-  )
-
-  // Handle loading question event
-  const handleLoadingQuestion = useCallback(
-    (data: any) => {
-      // Check if this is a stale event (older than the last one we processed)
-      if (data.timestamp && data.timestamp <= lastEventTimestampRef.current["loading-question"]) {
-        console.log("[DEBUG] Skipping stale loading question event:", data.timestamp)
-        return
-      }
-
-      // Update the last timestamp
-      if (data.timestamp) {
-        lastEventTimestampRef.current["loading-question"] = data.timestamp
-      }
-
-      console.log("[DEBUG] LOADING_QUESTION event received:", data)
-      setIsLoadingQuestion(true)
-    },
-    [setIsLoadingQuestion],
-  )
-
-  // Set up Pusher event listeners
-  useEffect(() => {
-    // Only set up event listeners if we have a game channel and haven't set them up yet
-    if (!gameChannel || eventsSetupRef.current) return
-
-    console.log("[DEBUG] Setting up Pusher event listeners")
-    eventsSetupRef.current = true
-
-    // Handle custom answer added event
-    gameChannel.bind("custom-answer-added", handleCustomAnswerAdded)
-
-    // Handle vote counts updated event
-    gameChannel.bind("vote-update", handleVoteCountsUpdated)
-
-    // Handle question updated event
-    gameChannel.bind("question-update", handleQuestionUpdated)
+    }
 
     // Handle loading question event
-    gameChannel.bind("loading-question", handleLoadingQuestion)
-
-    return () => {
-      console.log("[DEBUG] Cleaning up Pusher event listeners")
-      if (gameChannel) {
-        gameChannel.unbind("custom-answer-added", handleCustomAnswerAdded)
-        gameChannel.unbind("vote-update", handleVoteCountsUpdated)
-        gameChannel.unbind("question-update", handleQuestionUpdated)
-        gameChannel.unbind("loading-question", handleLoadingQuestion)
-      }
-      eventsSetupRef.current = false
+    const handleLoadingQuestion = () => {
+      console.log("[DEBUG] Loading question event received")
+      setIsLoadingQuestion(true)
     }
-  }, [gameChannel, handleCustomAnswerAdded, handleVoteCountsUpdated, handleQuestionUpdated, handleLoadingQuestion])
+
+    // Handle vote update event
+    const handleVoteUpdate = (data: any) => {
+      console.log("[DEBUG] Vote update event received:", data)
+      if (data.questionId === currentQuestionRef.current?.id) {
+        setVoteCounts(data.voteCounts)
+        setTotalVotes(data.totalVotes)
+      }
+    }
+
+    // Handle custom answer added event
+    const handleCustomAnswerAdded = (data: any) => {
+      console.log("[DEBUG] Custom answer added event received:", data)
+      if (data.questionId === currentQuestionRef.current?.id) {
+        // Check if we already have this custom answer
+        const exists = customAnswers.some((ca) => ca.id === data.customAnswer.id || ca.text === data.customAnswer.text)
+
+        if (!exists) {
+          console.log("[DEBUG] Adding new custom answer to state:", data.customAnswer)
+          setCustomAnswers([...customAnswers, data.customAnswer])
+        } else {
+          console.log("[DEBUG] Custom answer already exists, not adding duplicate")
+        }
+      }
+    }
+
+    // Bind events
+    channel.bind("new-question", handleNewQuestion)
+    channel.bind("loading-question", handleLoadingQuestion)
+    channel.bind("vote-update", handleVoteUpdate)
+    channel.bind("custom-answer-added", handleCustomAnswerAdded)
+
+    // Mark events as set up
+    eventsSetupRef.current = true
+
+    // Clean up
+    return () => {
+      console.log("[DEBUG] Cleaning up Pusher events")
+      channel.unbind("new-question", handleNewQuestion)
+      channel.unbind("loading-question", handleLoadingQuestion)
+      channel.unbind("vote-update", handleVoteUpdate)
+      channel.unbind("custom-answer-added", handleCustomAnswerAdded)
+      pusherClient.unsubscribe("game-events")
+    }
+  }, [
+    currentQuestionRef,
+    customAnswers,
+    setCustomAnswers,
+    setVoteCounts,
+    setTotalVotes,
+    fetchCurrentQuestion,
+    fetchVoteCounts,
+    setIsLoadingQuestion,
+  ])
 }
