@@ -68,15 +68,6 @@ export function useCustomAnswerState(
           // Set the newly added answer as the selected answer
           setSelectedAnswer(newCustomAnswerObj.text)
 
-          // Update vote counts optimistically
-          setVoteCounts((prev: any) => ({
-            ...prev,
-            [newCustomAnswerObj.text]: 1,
-          }))
-
-          // Update total votes
-          setTotalVotes((prev) => prev + 1)
-
           // Mark as submitted
           setSubmittedAnswer(newCustomAnswerObj.text)
           setHasSubmitted(true)
@@ -115,8 +106,6 @@ export function useCustomAnswerState(
       customAnswers,
       setCustomAnswers,
       setSelectedAnswer,
-      setVoteCounts,
-      setTotalVotes,
       setSubmittedAnswer,
       setHasSubmitted,
     ],
