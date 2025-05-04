@@ -8,7 +8,7 @@ import { pusherServer, GAME_CHANNEL, EVENTS } from "@/lib/pusher-server"
 import { generateId, generateUUID } from "@/lib/utils"
 
 // Get admin password from environment variable
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "babyjayce" // Fallback for development
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
 
 // Join game as a participant
 export async function joinGame(name: string) {
