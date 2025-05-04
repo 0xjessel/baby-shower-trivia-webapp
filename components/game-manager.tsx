@@ -295,9 +295,10 @@ export default function GameManager() {
           {games.map((game) => (
             <Card
               key={game.id}
-              className={`border ${
-                game.is_active ? "border-arcane-gold border-2" : "border-arcane-blue/30"
-              } bg-arcane-navy/80 transition-all duration-200`}
+              className={`border transition-all duration-200 cursor-pointer ${
+                game.is_active ? "border-arcane-gold border-2" : "border-arcane-blue/30 hover:border-arcane-gold/70"
+              } bg-arcane-navy/80`}
+              onClick={() => handleSetActive(game.id)}
             >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between">
@@ -317,18 +318,8 @@ export default function GameManager() {
                     </p>
                   </div>
                   <div className="flex space-x-2">
-                    {!game.is_active && (
-                      <Button
-                        onClick={() => handleSetActive(game.id)}
-                        variant="outline"
-                        size="sm"
-                        className="border-arcane-gold text-arcane-gold hover:bg-arcane-gold/10"
-                      >
-                        Set Active
-                      </Button>
-                    )}
                     <Button
-                      onClick={() => handleResetGame(game.id)}
+                      onClick={(e) => { e.stopPropagation(); handleResetGame(game.id); }}
                       variant="outline"
                       size="sm"
                       className="border-amber-500 text-amber-500 hover:bg-amber-500/10 flex items-center gap-1"
@@ -337,7 +328,7 @@ export default function GameManager() {
                       Reset
                     </Button>
                     <Button
-                      onClick={() => confirmDelete(game.id)}
+                      onClick={(e) => { e.stopPropagation(); confirmDelete(game.id); }}
                       variant="ghost"
                       size="sm"
                       className="text-red-400 hover:bg-red-900/20 hover:text-red-300"

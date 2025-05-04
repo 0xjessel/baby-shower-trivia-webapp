@@ -502,10 +502,6 @@ export default function AdminDashboardPage() {
                   >
                     {isActionInProgress ? "Processing..." : "Reset Players"}
                   </Button>
-
-                  <Button onClick={handleResetGame} variant="destructive" disabled={isActionInProgress}>
-                    {isActionInProgress ? "Processing..." : "Reset Games"}
-                  </Button>
                 </div>
               </CardContent>
             </Card>
