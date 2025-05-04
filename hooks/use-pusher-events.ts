@@ -103,13 +103,12 @@ export function usePusherEvents(
       }
 
       if (currentQuestionRef.current === data.questionId) {
-        console.log("[PUSHER] Fetching updated vote counts for current question")
-        fetchVoteCounts(data.questionId, data.updateId)
-      } else {
-        console.log("[PUSHER] Ignoring vote update for different question")
+        // Set vote counts and total votes directly from event data
+        setVoteCounts(data.voteCounts)
+        setTotalVotes(data.totalVotes || 0)
       }
     },
-    [fetchVoteCounts, currentQuestionRef],
+    [setVoteCounts, setTotalVotes, currentQuestionRef],
   )
 
   // Handle question updated event
@@ -203,9 +202,11 @@ export function usePusherEvents(
     gameChannel.bind(EVENTS.CUSTOM_ANSWER_ADDED, handleCustomAnswerAdded)
     console.log(`[PUSHER] Bound to ${EVENTS.CUSTOM_ANSWER_ADDED} event`)
 
-    // Handle vote counts updated event
+    // Handle vote counts updated event (legacy and new event names)
     gameChannel.bind(EVENTS.VOTE_COUNTS_UPDATED, handleVoteCountsUpdated)
     console.log(`[PUSHER] Bound to ${EVENTS.VOTE_COUNTS_UPDATED} event`)
+    gameChannel.bind("vote-update", handleVoteCountsUpdated)
+    console.log(`[PUSHER] Bound to vote-update event`)
 
     // Handle question updated event - bind to both event names to ensure compatibility
     gameChannel.bind("question-update", handleQuestionUpdated)
@@ -228,6 +229,7 @@ export function usePusherEvents(
       if (gameChannel) {
         gameChannel.unbind(EVENTS.CUSTOM_ANSWER_ADDED, handleCustomAnswerAdded)
         gameChannel.unbind(EVENTS.VOTE_COUNTS_UPDATED, handleVoteCountsUpdated)
+        gameChannel.unbind("vote-update", handleVoteCountsUpdated)
         gameChannel.unbind("question-update", handleQuestionUpdated)
         gameChannel.unbind(EVENTS.NEW_QUESTION, handleNewQuestion)
         gameChannel.unbind("loading-question", handleLoadingQuestion)
