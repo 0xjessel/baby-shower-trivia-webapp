@@ -31,13 +31,8 @@ export function useCustomAnswerState(
 
       if (!newCustomAnswer.trim() || !currentQuestion || timeIsUp) return false
 
-      console.log("[DEBUG] handleAddCustomAnswer - Starting custom answer submission")
-      console.log("[DEBUG] Current question:", currentQuestion.id)
-      console.log("[DEBUG] New custom answer:", newCustomAnswer.trim())
-
       // Check for duplicates before submitting
       if (isDuplicateCustomAnswer(newCustomAnswer, customAnswers)) {
-        console.log("[DEBUG] Prevented submitting duplicate custom answer")
         toast({
           title: "Duplicate answer",
           description: "This answer has already been added.",
@@ -52,12 +47,9 @@ export function useCustomAnswerState(
       setHasAddedCustomAnswer(true)
 
       try {
-        console.log("[DEBUG] Calling addCustomAnswer server action")
         const result = await addCustomAnswer(currentQuestion.id, newCustomAnswer.trim())
-        console.log("[DEBUG] Server action result:", result)
 
         if (result.success && result.customAnswer) {
-          console.log("[DEBUG] Custom answer added successfully:", result.customAnswer)
           setNewCustomAnswer("")
 
           // Add the custom answer to the local state immediately
@@ -71,8 +63,6 @@ export function useCustomAnswerState(
           // Check for duplicates before adding locally
           if (!isDuplicateCustomAnswer(newCustomAnswerObj, customAnswers)) {
             setCustomAnswers([...customAnswers, newCustomAnswerObj])
-          } else {
-            console.log("[DEBUG] Prevented adding duplicate custom answer locally")
           }
 
           // Set the newly added answer as the selected answer
@@ -101,7 +91,6 @@ export function useCustomAnswerState(
 
           return true
         } else {
-          console.log("[DEBUG] Failed to add custom answer:", result.error)
           // Reset the flag if the submission failed
           setHasAddedCustomAnswer(false)
           toast({
@@ -112,7 +101,6 @@ export function useCustomAnswerState(
           return false
         }
       } catch (error) {
-        console.error("[DEBUG] Exception in handleAddCustomAnswer:", error)
         // Reset the flag if there was an error
         setHasAddedCustomAnswer(false)
         toast({
@@ -123,7 +111,6 @@ export function useCustomAnswerState(
         return false
       } finally {
         setIsSubmittingCustom(false)
-        console.log("[DEBUG] handleAddCustomAnswer completed")
       }
     },
     [
@@ -141,18 +128,22 @@ export function useCustomAnswerState(
   // Handle key press in custom answer input
   const handleCustomAnswerKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>, currentQuestion?: any, timeIsUp?: boolean, playerName?: string) => {
-      console.log("[DEBUG] Key pressed in custom answer input:", e.key)
       if (e.key === "Enter") {
-        console.log("[DEBUG] Enter key pressed, preventing default")
         e.preventDefault()
         if (newCustomAnswer.trim() && !isSubmittingCustom && !timeIsUp) {
-          console.log("[DEBUG] Calling handleAddCustomAnswer from Enter key press")
           handleAddCustomAnswer(undefined, currentQuestion, timeIsUp, playerName)
         }
       }
     },
     [newCustomAnswer, isSubmittingCustom, handleAddCustomAnswer],
   )
+
+  // Reset custom answer state
+  const resetCustomAnswerState = useCallback(() => {
+    setNewCustomAnswer("")
+    setHasAddedCustomAnswer(false)
+    setIsSubmittingCustom(false)
+  }, [])
 
   return {
     // State
@@ -166,5 +157,6 @@ export function useCustomAnswerState(
     setHasAddedCustomAnswer,
     handleAddCustomAnswer,
     handleCustomAnswerKeyDown,
+    resetCustomAnswerState,
   }
 }

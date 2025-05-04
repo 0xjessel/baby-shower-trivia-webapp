@@ -848,7 +848,9 @@ export async function showResults() {
 
     // Trigger Pusher event to notify all clients
     try {
-      await pusherServer.trigger(GAME_CHANNEL, EVENTS.SHOW_RESULTS, {})
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.SHOW_RESULTS, {
+        timestamp: Date.now(),
+      })
       console.log("SHOW_RESULTS event triggered successfully")
     } catch (pusherError) {
       console.error("Error triggering Pusher event:", pusherError)

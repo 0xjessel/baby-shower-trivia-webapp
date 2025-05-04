@@ -14,7 +14,7 @@ export async function GET() {
     // Check if participant exists
     const { data: participant, error: participantError } = await supabaseAdmin
       .from("participants")
-      .select("id")
+      .select("id, name")
       .eq("id", participantId)
       .maybeSingle()
 
@@ -101,13 +101,36 @@ export async function GET() {
     // Filter out any null results
     const validResults = results.filter((r) => r !== null)
 
-    // Get participant rankings
-    const { data: rankings, error: rankingsError } = await supabaseAdmin.rpc("get_participant_rankings")
+    // Calculate participant rankings directly instead of using the SQL function
+    // First, get all participants and their correct answer counts
+    const { data: participantScores, error: scoresError } = await supabaseAdmin.from("participants").select(`
+        id,
+        name,
+        answers!inner(id, is_correct)
+      `)
 
-    if (rankingsError) {
-      console.error("Error fetching rankings:", rankingsError)
+    if (scoresError) {
+      console.error("Error fetching participant scores:", scoresError)
       return NextResponse.json({ results: validResults }) // Return results without ranking if there's an error
     }
+
+    // Calculate correct answers for each participant
+    const rankings = participantScores.map((p) => {
+      const correctAnswers = p.answers.filter((a: any) => a.is_correct).length
+      return {
+        participant_id: p.id,
+        participant_name: p.name,
+        correct_answers: correctAnswers,
+      }
+    })
+
+    // Sort by correct answers (descending)
+    rankings.sort((a, b) => b.correct_answers - a.correct_answers)
+
+    // Add rank
+    rankings.forEach((r, index) => {
+      r.rank = index + 1
+    })
 
     // Find the current participant's rank
     const participantRanking = rankings.find((r) => r.participant_id === participantId)

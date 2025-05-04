@@ -60,10 +60,6 @@ export default function QuestionDisplay({
 }: QuestionDisplayProps) {
   // Keep predefined options and custom answers separate
   const allOptions = question.options
-  const customAnswerOptions = customAnswers.map((ca) => ca.text)
-
-  // Check if the current user has added a custom answer for this question
-  const userAddedCustomAnswer = hasAddedCustomAnswer
 
   // Determine if this is an opinion question (no timer needed)
   const isOpinionQuestion = question.isOpinionQuestion === true
@@ -181,8 +177,8 @@ export default function QuestionDisplay({
             })}
           </RadioGroup>
 
-          {/* Custom answer input - only show if the user hasn't added a custom answer yet */}
-          {question.allowsCustomAnswers && !userAddedCustomAnswer && (
+          {/* Custom answer input - only show if the question allows custom answers and the user hasn't added one yet */}
+          {question.allowsCustomAnswers && !hasAddedCustomAnswer && (
             <CustomAnswerInput
               newCustomAnswer={newCustomAnswer}
               isSubmittingCustom={isSubmittingCustom}

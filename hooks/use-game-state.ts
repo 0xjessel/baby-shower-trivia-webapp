@@ -13,7 +13,6 @@ export function useGameState() {
   const router = useRouter()
   const playerNameRef = useRef<string>("")
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(false)
-  const previousQuestionIdRef = useRef<string | null>(null)
 
   // Question state
   const {
@@ -63,6 +62,7 @@ export function useGameState() {
     setHasAddedCustomAnswer,
     handleAddCustomAnswer,
     handleCustomAnswerKeyDown,
+    resetCustomAnswerState,
   } = useCustomAnswerState(
     customAnswers,
     setCustomAnswers,
@@ -83,6 +83,7 @@ export function useGameState() {
     fetchCurrentQuestion,
     fetchVoteCounts,
     setIsLoadingQuestion,
+    resetCustomAnswerState,
   )
 
   // Use a ref to store the current state values that callbacks need
@@ -101,15 +102,6 @@ export function useGameState() {
     }
   }, [currentQuestion, customAnswers, timeIsUp])
 
-  // Reset hasAddedCustomAnswer when the question changes
-  useEffect(() => {
-    if (currentQuestion && previousQuestionIdRef.current !== currentQuestion.id) {
-      console.log("[DEBUG] Question changed, resetting hasAddedCustomAnswer")
-      setHasAddedCustomAnswer(false)
-      previousQuestionIdRef.current = currentQuestion.id
-    }
-  }, [currentQuestion, setHasAddedCustomAnswer])
-
   // Initial setup - fetch question and set up authentication
   useEffect(() => {
     // Ensure this code only runs in the browser
@@ -127,12 +119,14 @@ export function useGameState() {
     // Fetch current question on initial load
     fetchCurrentQuestion().then((result) => {
       if (result && result.newQuestion && result.question) {
+        // Reset custom answer state for the new question
+        resetCustomAnswerState()
+
         // Initialize vote counts for the new question
         initializeVoteCounts(result.question, result.customAnswers)
 
         // If the user has already answered this question
         if (result.answered && result.selectedAnswer) {
-          console.log("User already answered:", result.selectedAnswer)
           setSelectedAnswer(result.selectedAnswer)
           setSubmittedAnswer(result.selectedAnswer)
           setHasSubmitted(true)
@@ -141,10 +135,6 @@ export function useGameState() {
           setSubmittedAnswer("")
           setHasSubmitted(false)
         }
-
-        // Reset hasAddedCustomAnswer for the new question
-        setHasAddedCustomAnswer(false)
-        previousQuestionIdRef.current = result.question.id
 
         // Fetch initial vote counts
         fetchVoteCounts(result.question.id, result.question.id)
@@ -158,7 +148,7 @@ export function useGameState() {
     setSubmittedAnswer,
     setHasSubmitted,
     fetchVoteCounts,
-    setHasAddedCustomAnswer,
+    resetCustomAnswerState,
   ])
 
   // Wrapper functions that use stateRef to access current state
@@ -239,5 +229,6 @@ export function useGameState() {
     handleTimeUp: wrappedHandleTimeUp,
     handleAddCustomAnswer: wrappedHandleAddCustomAnswer,
     handleCustomAnswerKeyDown: wrappedHandleCustomAnswerKeyDown,
+    resetCustomAnswerState,
   }
 }
