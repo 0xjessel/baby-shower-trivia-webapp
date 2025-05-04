@@ -13,6 +13,7 @@ export function useGameState() {
   const router = useRouter()
   const playerNameRef = useRef<string>("")
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(false)
+  const [currentQuestionId, setCurrentQuestionId] = useState<string | null>(null)
 
   // Question state
   const {
@@ -102,6 +103,18 @@ export function useGameState() {
     }
   }, [currentQuestion, customAnswers, timeIsUp])
 
+  // Reset custom answer state when question changes
+  useEffect(() => {
+    if (currentQuestion && currentQuestion.id !== currentQuestionId) {
+      console.log("Question changed, resetting custom answer state", {
+        oldId: currentQuestionId,
+        newId: currentQuestion.id,
+      })
+      setCurrentQuestionId(currentQuestion.id)
+      resetCustomAnswerState()
+    }
+  }, [currentQuestion, currentQuestionId, resetCustomAnswerState])
+
   // Initial setup - fetch question and set up authentication
   useEffect(() => {
     // Ensure this code only runs in the browser
@@ -119,6 +132,9 @@ export function useGameState() {
     // Fetch current question on initial load
     fetchCurrentQuestion().then((result) => {
       if (result && result.newQuestion && result.question) {
+        // Set current question ID
+        setCurrentQuestionId(result.question.id)
+
         // Reset custom answer state for the new question
         resetCustomAnswerState()
 
@@ -127,6 +143,7 @@ export function useGameState() {
 
         // If the user has already answered this question
         if (result.answered && result.selectedAnswer) {
+          console.log("User already answered:", result.selectedAnswer)
           setSelectedAnswer(result.selectedAnswer)
           setSubmittedAnswer(result.selectedAnswer)
           setHasSubmitted(true)

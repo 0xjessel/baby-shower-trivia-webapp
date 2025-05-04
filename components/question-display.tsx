@@ -58,8 +58,15 @@ export default function QuestionDisplay({
   onCustomAnswerKeyDown,
   onAddCustomAnswer,
 }: QuestionDisplayProps) {
-  // Keep predefined options and custom answers separate
-  const allOptions = question.options
+  // Filter out duplicate options between predefined and custom answers
+  const customAnswerTexts = customAnswers.map((ca) => ca.text)
+  const allOptions = question.options.filter((option) => !customAnswerTexts.includes(option))
+
+  console.log("Filtered options:", {
+    original: question.options,
+    customTexts: customAnswerTexts,
+    filtered: allOptions,
+  })
 
   // Determine if this is an opinion question (no timer needed)
   const isOpinionQuestion = question.isOpinionQuestion === true

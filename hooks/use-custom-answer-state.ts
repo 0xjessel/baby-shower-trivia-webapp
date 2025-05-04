@@ -81,9 +81,6 @@ export function useCustomAnswerState(
           setSubmittedAnswer(newCustomAnswerObj.text)
           setHasSubmitted(true)
 
-          // Set this flag to true to indicate the user has added a custom answer
-          setHasAddedCustomAnswer(true)
-
           toast({
             title: "Custom answer added!",
             description: "Your answer has been submitted.",
@@ -140,6 +137,7 @@ export function useCustomAnswerState(
 
   // Reset custom answer state
   const resetCustomAnswerState = useCallback(() => {
+    console.log("Resetting custom answer state")
     setNewCustomAnswer("")
     setHasAddedCustomAnswer(false)
     setIsSubmittingCustom(false)

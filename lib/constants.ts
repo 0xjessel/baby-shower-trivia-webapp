@@ -1,6 +1,7 @@
 // Game events
 export const EVENTS = {
   NEW_QUESTION: "new-question",
+  QUESTION_UPDATE: "question-update",
   ANSWER_SUBMITTED: "answer-submitted",
   TIMER_START: "timer-start",
   TIMER_STOP: "timer-stop",
