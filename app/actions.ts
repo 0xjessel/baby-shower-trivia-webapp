@@ -718,10 +718,25 @@ export async function resetGame() {
 
     if (gameError) throw gameError
 
-    // Clear all answers
-    const { error: answersError } = await supabaseAdmin.from("answers").delete()
+    // Instead of trying to delete all answers at once, get all answers first
+    const { data: allAnswers, error: fetchError } = await supabaseAdmin.from("answers").select("id")
 
-    if (answersError) throw answersError
+    if (fetchError) throw fetchError
+
+    // If there are answers, delete them in batches or one by one
+    if (allAnswers && allAnswers.length > 0) {
+      console.log(`Deleting ${allAnswers.length} answers...`)
+
+      // Delete answers one by one to avoid UUID syntax issues
+      for (const answer of allAnswers) {
+        const { error: deleteError } = await supabaseAdmin.from("answers").delete().eq("id", answer.id)
+
+        if (deleteError) {
+          console.error(`Error deleting answer ${answer.id}:`, deleteError)
+          // Continue with other deletions even if one fails
+        }
+      }
+    }
 
     // Clear all custom answers (stored in answer_options with is_custom=true)
     const { error: customAnswersError } = await supabaseAdmin.from("answer_options").delete().eq("is_custom", true)
@@ -745,6 +760,75 @@ export async function resetGame() {
   } catch (error) {
     console.error("Error resetting game:", error)
     return { success: false, error: "Failed to reset game" }
+  }
+}
+
+// Reset all votes without resetting the entire game
+export async function resetVotes() {
+  // Check if admin
+  const adminToken = cookies().get("adminToken")?.value
+  if (!adminToken) {
+    return { success: false, error: "Unauthorized" }
+  }
+
+  try {
+    // Get all answers first
+    const { data: allAnswers, error: fetchError } = await supabaseAdmin.from("answers").select("id")
+
+    if (fetchError) throw fetchError
+
+    // If there are answers, delete them in batches or one by one
+    if (allAnswers && allAnswers.length > 0) {
+      console.log(`Deleting ${allAnswers.length} votes...`)
+
+      // Delete answers one by one to avoid UUID syntax issues
+      for (const answer of allAnswers) {
+        const { error: deleteError } = await supabaseAdmin.from("answers").delete().eq("id", answer.id)
+
+        if (deleteError) {
+          console.error(`Error deleting answer ${answer.id}:`, deleteError)
+          // Continue with other deletions even if one fails
+        }
+      }
+    }
+
+    // Clear all custom answers (stored in answer_options with is_custom=true)
+    const { error: customAnswersError } = await supabaseAdmin.from("answer_options").delete().eq("is_custom", true)
+
+    if (customAnswersError) {
+      console.error("Error deleting custom answers:", customAnswersError)
+      // Continue even if custom answer deletion fails
+    }
+
+    // Trigger Pusher event to notify all clients about vote updates
+    try {
+      // For each active question, broadcast an empty vote count
+      const { data: game } = await supabaseAdmin
+        .from("games")
+        .select("current_question_id")
+        .eq("id", "current")
+        .maybeSingle()
+
+      if (game?.current_question_id) {
+        await pusherServer.trigger(GAME_CHANNEL, EVENTS.VOTE_UPDATE, {
+          voteCounts: {},
+          totalVotes: 0,
+          questionId: game.current_question_id,
+          timestamp: new Date().toISOString(),
+          source: "resetVotes",
+        })
+      }
+    } catch (pusherError) {
+      console.error("Error triggering Pusher event:", pusherError)
+      // Continue execution even if Pusher fails
+    }
+
+    revalidatePath("/admin/dashboard")
+
+    return { success: true }
+  } catch (error) {
+    console.error("Error resetting votes:", error)
+    return { success: false, error: "Failed to reset votes" }
   }
 }
 

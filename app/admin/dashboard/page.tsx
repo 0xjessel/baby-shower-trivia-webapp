@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { nextQuestion, previousQuestion, showResults, resetGame, uploadQuestion } from "@/app/actions"
+import { nextQuestion, previousQuestion, showResults, resetGame, resetVotes, uploadQuestion } from "@/app/actions"
 import { toast } from "@/hooks/use-toast"
 import QuestionForm from "@/components/question-form"
 import QuestionList from "@/components/question-list"
@@ -179,6 +179,40 @@ export default function AdminDashboardPage() {
     }
   }
 
+  const handleResetVotes = async () => {
+    if (isActionInProgress) return
+
+    if (window.confirm("Are you sure you want to reset all votes? This will clear all answers but keep questions.")) {
+      setIsActionInProgress(true)
+      try {
+        const result = await resetVotes()
+        if (result.success) {
+          toast({
+            title: "Success",
+            description: "All votes have been reset",
+          })
+          // Refresh questions to update vote counts
+          await fetchQuestions()
+        } else {
+          toast({
+            title: "Error",
+            description: result.error || "Failed to reset votes",
+            variant: "destructive",
+          })
+        }
+      } catch (error) {
+        console.error("Failed to reset votes:", error)
+        toast({
+          title: "Error",
+          description: "Failed to reset votes. Please try again.",
+          variant: "destructive",
+        })
+      } finally {
+        setIsActionInProgress(false)
+      }
+    }
+  }
+
   const handleResetGame = async () => {
     if (isActionInProgress) return
 
@@ -289,9 +323,20 @@ export default function AdminDashboardPage() {
                 )}
               </Button>
 
-              <Button onClick={handleResetGame} variant="destructive" className="ml-auto" disabled={isActionInProgress}>
-                {isActionInProgress ? "Processing..." : "Reset Game"}
-              </Button>
+              <div className="ml-auto flex gap-3">
+                <Button
+                  onClick={handleResetVotes}
+                  variant="outline"
+                  className="border-amber-500 text-amber-500 hover:bg-amber-500/10"
+                  disabled={isActionInProgress}
+                >
+                  {isActionInProgress ? "Processing..." : "Reset Votes"}
+                </Button>
+
+                <Button onClick={handleResetGame} variant="destructive" disabled={isActionInProgress}>
+                  {isActionInProgress ? "Processing..." : "Reset Game"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
 

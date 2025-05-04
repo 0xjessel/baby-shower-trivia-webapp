@@ -53,7 +53,8 @@ export default function GamePage() {
   const [newCustomAnswer, setNewCustomAnswer] = useState("")
   const [isSubmittingCustom, setIsSubmittingCustom] = useState(false)
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false)
-  const playerName = useRef<string>("")
+  const [playerName, setPlayerName] = useState<string>("")
+  const playerNameRef = useRef<string>("")
   const router = useRouter()
   const { gameChannel, isConnected, isLoading: isPusherLoading } = usePusher()
 
@@ -204,7 +205,8 @@ export default function GamePage() {
       return
     }
 
-    playerName.current = name
+    playerNameRef.current = name
+    setPlayerName(name) // Add this line to set the player name state
 
     // Fetch current question on initial load
     fetchCurrentQuestion()
@@ -483,6 +485,13 @@ export default function GamePage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-arcane-navy p-4">
       <PlayerHeartbeat />
+
+      {/* Player name display */}
+      {playerName && (
+        <div className="absolute top-4 left-4 text-arcane-blue font-medium">
+          Playing as: <span className="text-arcane-gold">{playerName}</span>
+        </div>
+      )}
 
       <Card className="w-full max-w-md border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
         <CardContent className="p-6">
