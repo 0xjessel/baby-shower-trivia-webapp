@@ -5,6 +5,7 @@ export interface Question {
   imageUrl?: string
   options: string[]
   allowsCustomAnswers?: boolean
+  isOpinionQuestion?: boolean
 }
 
 export interface CustomAnswer {

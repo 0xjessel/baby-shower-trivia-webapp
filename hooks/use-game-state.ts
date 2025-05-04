@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "@/hooks/use-toast"
 import type { Question, CustomAnswer, VoteCounts } from "@/types/game"
 import { submitAnswer, addCustomAnswer } from "@/app/actions"
+import { usePusher } from "@/hooks/use-pusher"
 
 export function useGameState() {
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null)
@@ -28,6 +29,7 @@ export function useGameState() {
 
   const playerNameRef = useRef<string>("")
   const router = useRouter()
+  const { gameChannel } = usePusher()
 
   // Track the last vote update we received to avoid duplicates
   const lastVoteUpdateId = useRef<string | null>(null)
@@ -294,6 +296,20 @@ export function useGameState() {
       console.log("[DEBUG] Current question:", currentQuestion.id)
       console.log("[DEBUG] New custom answer:", newCustomAnswer.trim())
 
+      // Check for duplicates before submitting
+      const normalizedInput = newCustomAnswer.trim().toLowerCase()
+      const isDuplicate = customAnswers.some((ca) => ca.text.toLowerCase().trim() === normalizedInput)
+
+      if (isDuplicate) {
+        console.log("[DEBUG] Prevented submitting duplicate custom answer")
+        toast({
+          title: "Duplicate answer",
+          description: "This answer has already been added.",
+          variant: "destructive",
+        })
+        return false
+      }
+
       setIsSubmittingCustom(true)
 
       // Set this flag early to prevent duplicate processing
@@ -316,12 +332,14 @@ export function useGameState() {
             newCustomAnswerObj.addedBy = playerNameRef.current
           }
 
-          // Check for duplicates before adding
-          const isDuplicate = customAnswers.some(
-            (ca) => ca.text.toLowerCase().trim() === newCustomAnswerObj.text.toLowerCase().trim(),
+          // Check for duplicates before adding locally
+          const isDuplicateLocal = customAnswers.some(
+            (ca) =>
+              ca.id === newCustomAnswerObj.id ||
+              ca.text.toLowerCase().trim() === newCustomAnswerObj.text.toLowerCase().trim(),
           )
 
-          if (!isDuplicate) {
+          if (!isDuplicateLocal) {
             setCustomAnswers((prev) => [...prev, newCustomAnswerObj])
           } else {
             console.log("[DEBUG] Prevented adding duplicate custom answer locally")
@@ -376,7 +394,7 @@ export function useGameState() {
 
       return false
     },
-    [newCustomAnswer],
+    [newCustomAnswer, customAnswers, toast],
   )
 
   // Handle key press in custom answer input
@@ -412,7 +430,69 @@ export function useGameState() {
 
     // Fetch current question on initial load
     fetchCurrentQuestion()
-  }, [router, fetchCurrentQuestion])
+
+    // Set up Pusher event listeners
+    if (gameChannel) {
+      // Handle custom answer added event
+      gameChannel.bind("custom-answer-added", (data: any) => {
+        console.log("[DEBUG] CUSTOM_ANSWER_ADDED event received:", data)
+
+        // Check if this event is for the current question
+        if (currentQuestionRef.current === data.questionId) {
+          console.log("[DEBUG] Current question ID:", currentQuestionRef.current)
+          console.log("[DEBUG] Event question ID:", data.questionId)
+
+          // Only add the custom answer if it wasn't added by the current user
+          // Check both the ID and the text to prevent duplicates
+          const isDuplicate = customAnswers.some(
+            (ca) =>
+              ca.id === data.customAnswer.id ||
+              ca.text.toLowerCase().trim() === data.customAnswer.text.toLowerCase().trim(),
+          )
+
+          if (!isDuplicate) {
+            console.log("[DEBUG] Adding new custom answer from another participant")
+            setCustomAnswers((prev) => [...prev, data.customAnswer])
+
+            // Update vote counts if provided
+            if (data.voteCounts) {
+              setVoteCounts(data.voteCounts)
+              setTotalVotes(data.totalVotes || 0)
+            } else {
+              // Fetch updated vote counts if not provided in the event
+              console.log("[DEBUG] Fetching updated vote counts")
+              fetchVoteCounts(data.questionId)
+            }
+          } else {
+            console.log("[DEBUG] Ignoring duplicate custom answer:", data.customAnswer.text)
+          }
+        }
+      })
+
+      // Handle vote counts updated event
+      gameChannel.bind("vote-counts-updated", (data: any) => {
+        console.log("[DEBUG] VOTE_COUNTS_UPDATED event received:", data)
+        if (currentQuestionRef.current === data.questionId) {
+          fetchVoteCounts(data.questionId)
+        }
+      })
+
+      // Handle question updated event
+      gameChannel.bind("question-updated", (data: any) => {
+        console.log("[DEBUG] QUESTION_UPDATED event received:", data)
+        fetchCurrentQuestion()
+      })
+
+      return () => {
+        // Clean up event listeners
+        if (gameChannel) {
+          gameChannel.unbind("custom-answer-added")
+          gameChannel.unbind("vote-counts-updated")
+          gameChannel.unbind("question-updated")
+        }
+      }
+    }
+  }, [router, fetchCurrentQuestion, gameChannel, fetchVoteCounts, customAnswers])
 
   return {
     // State

@@ -1,394 +1,215 @@
 "use server"
 
-import { cookies } from "next/headers"
 import { revalidatePath } from "next/cache"
 import { supabaseAdmin } from "@/lib/supabase"
-import { pusherServer, GAME_CHANNEL, EVENTS } from "@/lib/pusher-server"
-import { generateId, generateUUID } from "@/lib/utils"
+import { pusherServer } from "@/lib/pusher-server"
 import { populateAnswerOptions } from "./utils"
+import { cookies } from "next/headers"
+import { checkAdminAuth } from "./utils"
+import { GAME_CHANNEL, EVENTS } from "@/lib/pusher-server"
 
 // Upload a new question
 export async function uploadQuestion(formData: FormData) {
-  // Check if admin
-  const adminToken = cookies().get("adminToken")?.value
-  if (!adminToken) {
-    console.log("[SERVER] uploadQuestion: Unauthorized - no admin token")
-    return { success: false, error: "Unauthorized" }
-  }
-
   try {
-    console.log("[SERVER] uploadQuestion: Starting question upload process")
-
-    // Get the question type from the form data
-    const questionType = formData.get("type") as "baby-picture" | "text"
-    console.log(`[SERVER] uploadQuestion: Question type: ${questionType}`)
-
-    if (!questionType) {
-      console.log("[SERVER] uploadQuestion: Missing question type")
-      return { success: false, error: "Question type is required" }
+    // Check if user is authenticated as admin
+    const isAdmin = await checkAdminAuth()
+    if (!isAdmin) {
+      return { success: false, error: "Unauthorized" }
     }
 
-    const questionText = formData.get("question") as string
-    console.log(
-      `[SERVER] uploadQuestion: Question text: ${questionText?.substring(0, 50)}${questionText?.length > 50 ? "..." : ""}`,
-    )
+    // Extract form data
+    const question = formData.get("question") as string
+    const type = formData.get("type") as "text" | "baby-picture"
+    const optionsJson = formData.get("options") as string
+    const options = JSON.parse(optionsJson)
+    const correctAnswer = formData.get("correctAnswer") as string
+    const noCorrectAnswer = formData.get("noCorrectAnswer") === "true"
+    const allowsCustomAnswers = formData.get("allowsCustomAnswers") === "true"
+    const isOpinionQuestion = formData.get("isOpinionQuestion") === "true"
+    const image = formData.get("image") as File
 
-    if (!questionText) {
-      console.log("[SERVER] uploadQuestion: Missing question text")
-      return { success: false, error: "Question text is required" }
+    // Validate inputs
+    if (!question || !type || !options || options.length < 2) {
+      return { success: false, error: "Invalid input data" }
     }
 
-    // Get the game ID
-    const gameId = formData.get("game_id") as string
-    console.log(`[SERVER] uploadQuestion: Game ID: ${gameId}`)
+    // Handle image upload if present
+    let imageUrl = null
+    if (image && image.size > 0) {
+      const fileExt = image.name.split(".").pop()
+      const fileName = `${Date.now()}.${fileExt}`
+      const filePath = `baby-pictures/${fileName}`
 
-    if (!gameId) {
-      console.log("[SERVER] uploadQuestion: Missing game ID")
-      return { success: false, error: "Game selection is required" }
-    }
-
-    // Check if the game exists
-    const { data: game, error: gameError } = await supabaseAdmin.from("games").select("id").eq("id", gameId).single()
-    console.log(
-      `[SERVER] uploadQuestion: Game check result: ${game ? "found" : "not found"}, error: ${gameError ? gameError.message : "none"}`,
-    )
-
-    if (gameError || !game) {
-      console.log("[SERVER] uploadQuestion: Game not found")
-      return { success: false, error: "Selected game not found" }
-    }
-
-    // Check if this is a question with no prefilled options
-    const noPrefilledOptions = formData.get("no_prefilled_options") === "true"
-    console.log(`[SERVER] uploadQuestion: No prefilled options: ${noPrefilledOptions}`)
-
-    // Get options
-    const options: string[] = []
-    let correctAnswerIndex = Number.parseInt(formData.get("correctAnswerIndex") as string) || 0
-    const noCorrectAnswer = formData.get("no_correct_answer") === "true"
-    console.log(
-      `[SERVER] uploadQuestion: No correct answer: ${noCorrectAnswer}, Correct answer index: ${correctAnswerIndex}`,
-    )
-
-    // Only collect options if we're not using the "no prefilled options" mode
-    if (!noPrefilledOptions) {
-      // Log all form data keys for debugging
-      console.log("[SERVER] uploadQuestion: Form data keys:", Array.from(formData.keys()))
-
-      for (let i = 0; i < 10; i++) {
-        const option = formData.get(`option_${i}`)
-        if (option && (option as string).trim()) {
-          options.push((option as string).trim())
-          console.log(`[SERVER] uploadQuestion: Added option ${i}: "${(option as string).trim()}"`)
-        }
-      }
-
-      console.log(`[SERVER] uploadQuestion: Total options collected: ${options.length}`)
-
-      // Validate options unless we're in "no prefilled options" mode
-      if (options.length < 2 && !noPrefilledOptions) {
-        console.log("[SERVER] uploadQuestion: Not enough options")
-        return { success: false, error: "At least 2 options are required" }
-      }
-
-      if (correctAnswerIndex >= options.length) {
-        console.log(
-          `[SERVER] uploadQuestion: Correct answer index ${correctAnswerIndex} is out of bounds, resetting to 0`,
-        )
-        correctAnswerIndex = 0
-      }
-    }
-
-    // Make sure custom answers are enabled if there are no prefilled options
-    const allowsCustomAnswers = formData.get("allows_custom_answers") !== "false"
-    console.log(`[SERVER] uploadQuestion: Allows custom answers: ${allowsCustomAnswers}`)
-
-    if (noPrefilledOptions && !allowsCustomAnswers) {
-      console.log("[SERVER] uploadQuestion: Custom answers must be enabled with no prefilled options")
-      return { success: false, error: "Custom answers must be enabled when using no prefilled options" }
-    }
-
-    let imageUrl = undefined
-
-    // Handle image upload for baby picture questions
-    if (questionType === "baby-picture") {
-      console.log("[SERVER] uploadQuestion: Processing baby picture upload")
-      const image = formData.get("image") as File
-
-      if (!image) {
-        console.log("[SERVER] uploadQuestion: No image file found in form data")
-        return { success: false, error: "Image is required for baby picture questions" }
-      }
-
-      console.log(`[SERVER] uploadQuestion: Image file: ${image.name}, size: ${image.size}, type: ${image.type}`)
-
-      if (image.size === 0) {
-        console.log("[SERVER] uploadQuestion: Image file has zero size")
-        return { success: false, error: "Image is required for baby picture questions" }
-      }
-
-      // Check if the bucket exists and create it if it doesn't
-      console.log("[SERVER] uploadQuestion: Checking if storage bucket exists")
-      const { data: buckets, error: bucketsError } = await supabaseAdmin.storage.listBuckets()
-
-      if (bucketsError) {
-        console.log(`[SERVER] uploadQuestion: Error listing buckets: ${bucketsError.message}`)
-      }
-
-      console.log(`[SERVER] uploadQuestion: Found ${buckets?.length || 0} buckets`)
-      const bucketExists = buckets?.some((bucket) => bucket.name === "baby-pictures")
-      console.log(`[SERVER] uploadQuestion: baby-pictures bucket exists: ${bucketExists}`)
-
-      if (!bucketExists) {
-        // Create the bucket
-        console.log("[SERVER] uploadQuestion: Creating baby-pictures bucket")
-        const { error: createBucketError } = await supabaseAdmin.storage.createBucket("baby-pictures", {
-          public: false, // Private bucket for secure access
-        })
-
-        if (createBucketError) {
-          console.error("[SERVER] uploadQuestion: Error creating bucket:", createBucketError)
-          return {
-            success: false,
-            error:
-              "Failed to create storage bucket. Please contact the administrator to set up the storage bucket in Supabase.",
-          }
-        }
-        console.log("[SERVER] uploadQuestion: Successfully created baby-pictures bucket")
-      }
-
-      // Upload image to Supabase Storage
-      const fileName = `${generateId()}-${image.name.replace(/\s+/g, "-").toLowerCase()}`
-      console.log(`[SERVER] uploadQuestion: Generated file name: ${fileName}`)
-
-      console.log("[SERVER] uploadQuestion: Starting image upload to Supabase")
-      const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-        .from("baby-pictures")
-        .upload(fileName, image, {
-          cacheControl: "3600",
-          upsert: false,
-        })
+      const { error: uploadError } = await supabaseAdmin.storage.from("game-assets").upload(filePath, image)
 
       if (uploadError) {
-        console.error("[SERVER] uploadQuestion: Error uploading image:", uploadError)
-        return { success: false, error: `Failed to upload image: ${uploadError.message}` }
+        console.error("Error uploading image:", uploadError)
+        return { success: false, error: "Failed to upload image" }
       }
 
-      console.log(`[SERVER] uploadQuestion: Image uploaded successfully: ${uploadData?.path}`)
-
-      // Instead of getting a public URL, we'll store just the file path
-      // We'll generate signed URLs when needed
-      imageUrl = `baby-pictures/${fileName}`
-      console.log(`[SERVER] uploadQuestion: Image URL set to: ${imageUrl}`)
+      imageUrl = filePath
     }
 
-    // Insert the question into the database with a proper UUID
-    const questionId = generateUUID()
-    console.log(`[SERVER] uploadQuestion: Generated question ID: ${questionId}`)
-
-    // Use a special placeholder value instead of null for questions with no correct answer
-    // This is needed because the database schema has a NOT NULL constraint on correct_answer
-    const correctAnswer =
-      noCorrectAnswer || noPrefilledOptions
-        ? options.length > 0
-          ? options[0]
-          : "NONE" // Use first option or "NONE" as placeholder
-        : options[correctAnswerIndex]
-
-    console.log(
-      `[SERVER] uploadQuestion: Correct answer: ${correctAnswer} (${noCorrectAnswer || noPrefilledOptions ? "placeholder - no actual correct answer" : "actual correct answer"})`,
-    )
-
-    // Add a flag to indicate if this question has no correct answer
-    const hasNoCorrectAnswer = noCorrectAnswer || noPrefilledOptions
-
-    console.log("[SERVER] uploadQuestion: Inserting question into database")
-    const { error, data } = await supabaseAdmin
+    // Insert question into database
+    const { data: questionData, error: questionError } = await supabaseAdmin
       .from("questions")
       .insert({
-        id: questionId,
-        type: questionType,
-        question: questionText,
+        type,
+        question,
         image_url: imageUrl,
-        options: options,
-        correct_answer: correctAnswer, // This will never be null now
+        options,
+        correct_answer: noCorrectAnswer ? "NONE" : correctAnswer,
+        no_correct_answer: noCorrectAnswer,
         allows_custom_answers: allowsCustomAnswers,
-        no_correct_answer: hasNoCorrectAnswer, // Add this flag to indicate if there's no correct answer
-        game_id: gameId, // Associate with the selected game
+        is_opinion_question: isOpinionQuestion,
       })
       .select()
+      .single()
 
-    if (error) {
-      console.error("[SERVER] uploadQuestion: Database error:", error)
-      throw error
+    if (questionError) {
+      console.error("Error inserting question:", questionError)
+      return { success: false, error: "Failed to save question" }
     }
 
-    console.log(`[SERVER] uploadQuestion: Question inserted successfully: ${data?.[0]?.id}`)
+    // Revalidate the questions page
     revalidatePath("/admin/dashboard")
 
-    return { success: true, gameId }
+    return { success: true }
   } catch (error) {
-    console.error("[SERVER] uploadQuestion: Error adding question:", error)
-    return { success: false, error: "Failed to add question" }
+    console.error("Error uploading question:", error)
+    return { success: false, error: "An unexpected error occurred" }
   }
 }
 
 // Delete a question
-export async function deleteQuestion(id: string) {
-  // Check if admin
-  const adminToken = cookies().get("adminToken")?.value
-  if (!adminToken) {
-    return { success: false, error: "Unauthorized" }
-  }
-
+export async function deleteQuestion(questionId: string) {
   try {
-    // Get the question to check if it has an image
-    const { data: question, error: getError } = await supabaseAdmin
-      .from("questions")
-      .select("image_url, game_id")
-      .eq("id", id)
-      .single()
-
-    if (getError) throw getError
-
-    // Delete the image from storage if it exists
-    if (question.image_url) {
-      const fileName = question.image_url.split("/").pop()
-
-      if (fileName) {
-        const { error: storageError } = await supabaseAdmin.storage.from("baby-pictures").remove([fileName])
-
-        if (storageError) {
-          console.error("Error deleting image:", storageError)
-          // Continue with question deletion even if image deletion fails
-        }
-      }
+    // Check if user is authenticated as admin
+    const isAdmin = await checkAdminAuth()
+    if (!isAdmin) {
+      return { success: false, error: "Unauthorized" }
     }
 
-    // Delete the question
-    const { error } = await supabaseAdmin.from("questions").delete().eq("id", id)
-
-    if (error) throw error
-
-    // Delete any answers for this question
-    const { error: answersError } = await supabaseAdmin.from("answers").delete().eq("question_id", id)
-
-    if (answersError) {
-      console.error("Error deleting answers:", answersError)
-      // Continue even if answer deletion fails
-    }
-
-    // Delete any custom answers for this question (stored in answer_options with is_custom=true)
+    // First, delete any custom answers associated with this question
     const { error: customAnswersError } = await supabaseAdmin
       .from("answer_options")
       .delete()
-      .eq("question_id", id)
+      .eq("question_id", questionId)
       .eq("is_custom", true)
 
     if (customAnswersError) {
       console.error("Error deleting custom answers:", customAnswersError)
-      // Continue even if custom answer deletion fails
+      return { success: false, error: "Failed to delete custom answers" }
     }
 
-    // Check if this was the current question in the active game and update game state if needed
-    const { data: activeGame, error: gameError } = await supabaseAdmin
-      .from("games")
-      .select("id, current_question_id")
-      .eq("is_active", true)
-      .single()
+    // Then delete the question
+    const { error } = await supabaseAdmin.from("questions").delete().eq("id", questionId)
 
-    if (!gameError && activeGame && activeGame.current_question_id === id) {
-      // This was the current question, set to null
-      await supabaseAdmin.from("games").update({ current_question_id: null }).eq("id", activeGame.id)
+    if (error) {
+      console.error("Error deleting question:", error)
+      return { success: false, error: "Failed to delete question" }
     }
 
+    // Revalidate the questions page
     revalidatePath("/admin/dashboard")
 
     return { success: true }
   } catch (error) {
     console.error("Error deleting question:", error)
-    return { success: false, error: "Failed to delete question" }
+    return { success: false, error: "An unexpected error occurred" }
   }
 }
 
-// Set a specific question as active
+// Set the active question
 export async function setActiveQuestion(questionId: string) {
-  // Check if admin is authenticated
-  const adminToken = cookies().get("adminToken")?.value
-  if (!adminToken) {
-    return { success: false, error: "Unauthorized" }
-  }
-
   try {
+    // Check if user is authenticated as admin
+    const isAdmin = await checkAdminAuth()
+    if (!isAdmin) {
+      return { success: false, error: "Unauthorized" }
+    }
+
     // Get the active game
-    const { data: activeGame, error: activeGameError } = await supabaseAdmin
+    const { data: activeGame, error: gameError } = await supabaseAdmin
       .from("games")
       .select("id")
       .eq("is_active", true)
       .single()
 
-    if (activeGameError || !activeGame) {
+    if (gameError) {
+      console.error("Error getting active game:", gameError)
       return { success: false, error: "No active game found" }
     }
 
-    // Update the active game with the specified question
+    // Get the question details
+    const { data: question, error: questionError } = await supabaseAdmin
+      .from("questions")
+      .select("*")
+      .eq("id", questionId)
+      .single()
+
+    if (questionError || !question) {
+      console.error("Error getting question:", questionError)
+      return { success: false, error: "Question not found" }
+    }
+
+    // Update the active game with the new question
     const { error: updateError } = await supabaseAdmin
       .from("games")
       .update({
         current_question_id: questionId,
-        status: "active", // Ensure status is set to active
+        status: "active",
       })
       .eq("id", activeGame.id)
 
-    if (updateError) throw updateError
+    if (updateError) {
+      console.error("Error updating game:", updateError)
+      return { success: false, error: "Failed to set active question" }
+    }
 
-    // Log the state after updates for debugging
-    console.log("[SERVER] Question set as active:", {
+    // Pre-populate answer_options table with the predefined options
+    const answerOptions = question.options.map((option: string) => ({
+      question_id: questionId,
+      text: option,
+      is_custom: false,
+    }))
+
+    // Delete any existing non-custom options for this question
+    const { error: deleteOptionsError } = await supabaseAdmin
+      .from("answer_options")
+      .delete()
+      .eq("question_id", questionId)
+      .eq("is_custom", false)
+
+    if (deleteOptionsError) {
+      console.error("Error deleting existing options:", deleteOptionsError)
+      // Continue anyway, as this is not critical
+    }
+
+    // Insert the predefined options
+    const { error: insertOptionsError } = await supabaseAdmin.from("answer_options").insert(answerOptions)
+
+    if (insertOptionsError) {
+      console.error("Error inserting options:", insertOptionsError)
+      // Continue anyway, as this is not critical
+    }
+
+    // Notify clients of the question change
+    await pusherServer.trigger("game-channel", "question-update", {
       questionId,
-      activeGameId: activeGame.id,
+      options: question.options,
+      correctAnswer: question.correct_answer,
+      allowsCustomAnswers: question.allows_custom_answers,
+      isOpinionQuestion: question.is_opinion_question,
     })
 
-    // Get the full question details to send to clients
-    const { data: questionDetails, error: detailsError } = await supabaseAdmin
-      .from("questions")
-      .select("id, type, question, image_url, options, allows_custom_answers")
-      .eq("id", questionId)
-      .single()
-
-    if (detailsError) throw detailsError
-
-    // When moving to a new question, we need to pre-populate the answer_options table
-    // with the predefined options from the question
-    await populateAnswerOptions(questionDetails.id, questionDetails.options)
-
-    // Trigger Pusher event to notify all clients
-    try {
-      console.log("[SERVER] Triggering QUESTION_UPDATE event via Pusher for question:", questionDetails.id)
-
-      // Add a timestamp to ensure clients recognize this as a new event
-      const eventData = {
-        question: {
-          id: questionDetails.id,
-          type: questionDetails.type,
-          question: questionDetails.question,
-          imageUrl: questionDetails.image_url,
-          options: questionDetails.options,
-          allowsCustomAnswers: questionDetails.allows_custom_answers,
-        },
-        timestamp: Date.now(),
-      }
-
-      await pusherServer.trigger(GAME_CHANNEL, EVENTS.QUESTION_UPDATE, eventData)
-      console.log("[SERVER] Successfully triggered QUESTION_UPDATE event")
-    } catch (pusherError) {
-      console.error("Error triggering Pusher event:", pusherError)
-      // Continue execution even if Pusher fails
-    }
+    // Revalidate the questions page
+    revalidatePath("/admin/dashboard")
 
     return { success: true }
   } catch (error) {
     console.error("Error setting active question:", error)
-    return { success: false, error: "Failed to set active question" }
+    return { success: false, error: "An unexpected error occurred" }
   }
 }
 

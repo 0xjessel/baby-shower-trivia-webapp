@@ -115,7 +115,7 @@ export async function GET() {
       try {
         const response = await supabaseAdmin
           .from("questions")
-          .select("id, type, question, image_url, options, allows_custom_answers")
+          .select("id, type, question, image_url, options, allows_custom_answers, is_opinion_question")
           .eq("id", activeGame.current_question_id)
           .single()
 
@@ -206,6 +206,7 @@ export async function GET() {
         imageUrl: question.image_url ? await getSignedUrl(question.image_url) : undefined,
         options: allOptions,
         allowsCustomAnswers: question.allows_custom_answers,
+        isOpinionQuestion: question.is_opinion_question,
       },
       customAnswers,
     }

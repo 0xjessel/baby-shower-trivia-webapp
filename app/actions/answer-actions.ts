@@ -201,7 +201,6 @@ export async function addCustomAnswer(questionId: string, answerText: string) {
         customAnswer,
         questionId,
         timestamp: Date.now(), // Add timestamp to make the event unique
-        // Don't include vote counts here - we'll send a separate VOTE_UPDATE event
       })
 
       // Send a separate vote update event with a slight delay to avoid race conditions

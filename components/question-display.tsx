@@ -62,14 +62,20 @@ export default function QuestionDisplay({
   // Check if the current user has added a custom answer for this question
   const userAddedCustomAnswer = hasAddedCustomAnswer
 
+  // Determine if this is an opinion question (no timer needed)
+  const isOpinionQuestion = question.isOpinionQuestion === true
+
   return (
     <Card className="w-full max-w-md border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
       <CardContent className="p-6">
         <div className="flex justify-between items-start mb-4">
           <h2 className="text-xl font-semibold text-arcane-blue flex-1">{question.question}</h2>
-          <div className="ml-4 flex-shrink-0">
-            <CountdownTimer duration={30} onTimeUp={onTimeUp} isActive={timerActive} reset={timerReset} />
-          </div>
+          {/* Only show timer for non-opinion questions */}
+          {!isOpinionQuestion && (
+            <div className="ml-4 flex-shrink-0">
+              <CountdownTimer duration={30} onTimeUp={onTimeUp} isActive={timerActive} reset={timerReset} />
+            </div>
+          )}
         </div>
 
         {question.type === "baby-picture" && question.imageUrl && (
@@ -186,7 +192,7 @@ export default function QuestionDisplay({
           <div className="w-full text-center py-2 text-green-400">
             Answer submitted! {isSubmittingAnswer && "Processing..."}
           </div>
-        ) : timeIsUp ? (
+        ) : timeIsUp && !isOpinionQuestion ? (
           <div className="w-full text-center py-2 text-arcane-gray">Time's up! Waiting for the next question...</div>
         ) : !selectedAnswer ? (
           <div className="w-full text-center py-2 text-arcane-gray">Select an answer to submit</div>
