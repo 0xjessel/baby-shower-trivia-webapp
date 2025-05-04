@@ -253,14 +253,11 @@ export default function GamePage() {
 
         // Only update if this is for the current question
         if (currentQuestionRef.current && data.questionId === currentQuestionRef.current) {
-          // Generate a unique ID for this update
-          const updateId = `${data.questionId}-${data.timestamp || Date.now()}`
-
           // Always update the vote counts to ensure real-time updates
           console.log("Updating vote counts from Pusher event")
           setVoteCounts(data.voteCounts)
           setTotalVotes(data.totalVotes)
-          lastVoteUpdateId.current = updateId
+          lastVoteUpdateId.current = `${data.questionId}-${data.timestamp || Date.now()}`
         }
       },
     )
@@ -452,6 +449,9 @@ export default function GamePage() {
         })
       }
     }
+
+    // Note: We're not disabling any Pusher listeners here,
+    // so vote updates will continue to be received
   }
 
   if (isPusherLoading || isLoading) {

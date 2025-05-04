@@ -10,7 +10,7 @@ import { toast } from "@/hooks/use-toast"
 import QuestionForm from "@/components/question-form"
 import QuestionList from "@/components/question-list"
 import GameStats from "@/components/game-stats"
-import { Clock, ChevronLeft, ChevronRight, Trophy } from "lucide-react"
+import { Clock, ChevronLeft, ChevronRight, Trophy, Users } from "lucide-react"
 
 export default function AdminDashboardPage() {
   const [isAdmin, setIsAdmin] = useState(false)
@@ -20,6 +20,7 @@ export default function AdminDashboardPage() {
   const [questions, setQuestions] = useState<any[]>([])
   const [isLastQuestion, setIsLastQuestion] = useState(false)
   const router = useRouter()
+  const [activePlayers, setActivePlayers] = useState(0)
 
   useEffect(() => {
     // Check if user is authenticated as admin
@@ -32,6 +33,7 @@ export default function AdminDashboardPage() {
           setIsAdmin(true)
           fetchGameState()
           fetchQuestions()
+          fetchActivePlayers() // Fetch active players initially
         }
         setIsLoading(false)
       })
@@ -39,6 +41,11 @@ export default function AdminDashboardPage() {
         console.error("Error checking admin status:", err)
         router.push("/admin")
       })
+
+    // Set up interval to fetch active players
+    const interval = setInterval(fetchActivePlayers, 30000) // Update every 30 seconds
+
+    return () => clearInterval(interval)
   }, [router])
 
   // Fetch current game state to get current question
@@ -72,6 +79,27 @@ export default function AdminDashboardPage() {
       }
     } catch (error) {
       console.error("Error fetching questions:", error)
+    }
+  }
+
+  // Fetch active players count
+  const fetchActivePlayers = async () => {
+    try {
+      const response = await fetch("/api/online-players", {
+        headers: {
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.count !== undefined) {
+          setActivePlayers(data.count)
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching active players:", error)
     }
   }
 
@@ -301,7 +329,7 @@ export default function AdminDashboardPage() {
                 ) : (
                   <>
                     <Clock className="h-4 w-4" />
-                    <span>Next Question (30s)</span>
+                    <span>Next Question</span>
                     <ChevronRight className="h-4 w-4" />
                   </>
                 )}
@@ -365,6 +393,10 @@ export default function AdminDashboardPage() {
             <TabsContent value="questions">
               <Card className="border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
                 <CardContent className="pt-6">
+                  <div className="flex items-center mb-4 text-arcane-blue">
+                    <Users className="h-5 w-5 mr-2" />
+                    <span className="font-medium">{activePlayers} Active Players Online</span>
+                  </div>
                   <QuestionList currentQuestionId={currentQuestionId} />
                 </CardContent>
               </Card>

@@ -320,16 +320,34 @@ export async function submitAnswer(questionId: string, answerText: string) {
     if (checkError) throw checkError
 
     if (existingAnswer) {
-      // Update existing answer
-      const { error: updateError } = await supabaseAdmin
+      // Get the previous answer option before updating
+      const { data: prevAnswer, error: prevAnswerError } = await supabaseAdmin
         .from("answers")
-        .update({
-          answer_option_id: answerOption.id,
-          is_correct: isCorrect,
-        })
+        .select("answer_option_id")
         .eq("id", existingAnswer.id)
+        .single()
 
-      if (updateError) throw updateError
+      if (prevAnswerError) throw prevAnswerError
+
+      // Only update if the answer has actually changed
+      if (prevAnswer.answer_option_id !== answerOption.id) {
+        console.log(`[SERVER] Updating answer from ${prevAnswer.answer_option_id} to ${answerOption.id}`)
+
+        // Update existing answer
+        const { error: updateError } = await supabaseAdmin
+          .from("answers")
+          .update({
+            answer_option_id: answerOption.id,
+            is_correct: isCorrect,
+          })
+          .eq("id", existingAnswer.id)
+
+        if (updateError) throw updateError
+
+        console.log(`[SERVER] Answer updated successfully`)
+      } else {
+        console.log(`[SERVER] Answer unchanged, skipping update`)
+      }
     } else {
       // Insert new answer with a proper UUID
       const { error: insertError } = await supabaseAdmin.from("answers").insert({
@@ -383,7 +401,7 @@ async function getVoteCounts(questionId: string) {
 
     if (optionsError) throw optionsError
 
-    // Get all answers for this question
+    // Get all answers for this question with a fresh query
     const { data: answers, error: answersError } = await supabaseAdmin
       .from("answers")
       .select("answer_option_id")
