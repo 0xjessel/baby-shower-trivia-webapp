@@ -23,10 +23,24 @@ export async function GET() {
   }
 
   try {
-    // Get all questions
+    // Get the active game
+    const { data: activeGame, error: gameError } = await supabaseAdmin
+      .from("games")
+      .select("id")
+      .eq("is_active", true)
+      .single()
+
+    if (gameError) {
+      throw gameError
+    }
+
+    const activeGameId = activeGame?.id || "current"
+
+    // Get all questions for the active game
     const { data: questions, error } = await supabaseAdmin
       .from("questions")
       .select("*")
+      .eq("game_id", activeGameId)
       .order("created_at", { ascending: true })
 
     if (error) {
@@ -50,6 +64,7 @@ export async function GET() {
           options: q.options,
           correctAnswer: q.correct_answer,
           allowsCustomAnswers: q.allows_custom_answers,
+          gameId: q.game_id,
         }
       }),
     )

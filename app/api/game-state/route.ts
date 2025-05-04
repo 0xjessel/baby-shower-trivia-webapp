@@ -10,20 +10,39 @@ export async function GET() {
   }
 
   try {
-    // Get current game state
-    const { data: game, error: gameError } = await supabaseAdmin
+    // Get active game
+    const { data: activeGame, error: gameError } = await supabaseAdmin
       .from("games")
-      .select("current_question_id, status")
-      .eq("id", "current")
-      .maybeSingle()
+      .select("id, current_question_id, status")
+      .eq("is_active", true)
+      .single()
 
     if (gameError) {
       throw gameError
     }
 
+    // If no active game, fall back to the "current" game for backward compatibility
+    if (!activeGame) {
+      const { data: fallbackGame, error: fallbackError } = await supabaseAdmin
+        .from("games")
+        .select("current_question_id, status")
+        .eq("id", "current")
+        .maybeSingle()
+
+      if (fallbackError) {
+        throw fallbackError
+      }
+
+      return NextResponse.json({
+        currentQuestionId: fallbackGame?.current_question_id || null,
+        status: fallbackGame?.status || "waiting",
+      })
+    }
+
     return NextResponse.json({
-      currentQuestionId: game?.current_question_id || null,
-      status: game?.status || "waiting",
+      currentQuestionId: activeGame.current_question_id || null,
+      status: activeGame.status || "waiting",
+      gameId: activeGame.id,
     })
   } catch (error) {
     console.error("Error fetching game state:", error)

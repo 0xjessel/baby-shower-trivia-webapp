@@ -895,6 +895,20 @@ export async function uploadQuestion(formData: FormData) {
       return { success: false, error: "Question text is required" }
     }
 
+    // Get the game ID
+    const gameId = formData.get("game_id") as string
+
+    if (!gameId) {
+      return { success: false, error: "Game selection is required" }
+    }
+
+    // Check if the game exists
+    const { data: game, error: gameError } = await supabaseAdmin.from("games").select("id").eq("id", gameId).single()
+
+    if (gameError || !game) {
+      return { success: false, error: "Selected game not found" }
+    }
+
     // Get options
     const options: string[] = []
     let correctAnswerIndex = Number.parseInt(formData.get("correctAnswerIndex") as string) || 0
@@ -976,13 +990,14 @@ export async function uploadQuestion(formData: FormData) {
       options: options,
       correct_answer: options[correctAnswerIndex],
       allows_custom_answers: allowsCustomAnswers,
+      game_id: gameId, // Associate with the selected game
     })
 
     if (error) throw error
 
     revalidatePath("/admin/dashboard")
 
-    return { success: true }
+    return { success: true, gameId }
   } catch (error) {
     console.error("Error adding question:", error)
     return { success: false, error: "Failed to add question" }
@@ -1128,5 +1143,162 @@ export async function setActiveQuestion(questionId: string) {
   } catch (error) {
     console.error("Error setting active question:", error)
     return { success: false, error: "Failed to set active question" }
+  }
+}
+
+// Add these new server actions to the existing actions.ts file
+
+// Create a new game
+export async function createGame({ name, description }: { name: string; description?: string }) {
+  // Check if admin is authenticated
+  const adminToken = cookies().get("adminToken")?.value
+  if (!adminToken) {
+    return { success: false, error: "Unauthorized" }
+  }
+
+  try {
+    // Generate a unique ID for the game (using a prefix to make it clear it's not a UUID)
+    const gameId = `game_${generateId(16)}`
+
+    // Insert the new game
+    const { error } = await supabaseAdmin.from("games").insert({
+      id: gameId,
+      name,
+      description: description || null,
+      status: "waiting",
+      is_active: false,
+    })
+
+    if (error) throw error
+
+    return { success: true, gameId }
+  } catch (error) {
+    console.error("Error creating game:", error)
+    return { success: false, error: "Failed to create game" }
+  }
+}
+
+// Set a game as active
+export async function setActiveGame(gameId: string) {
+  // Check if admin is authenticated
+  const adminToken = cookies().get("adminToken")?.value
+  if (!adminToken) {
+    return { success: false, error: "Unauthorized" }
+  }
+
+  try {
+    // First, set all games to inactive
+    const { error: updateError } = await supabaseAdmin.from("games").update({ is_active: false }).neq("id", "none")
+
+    if (updateError) throw updateError
+
+    // Then, set the selected game to active
+    const { error } = await supabaseAdmin.from("games").update({ is_active: true }).eq("id", gameId)
+
+    if (error) throw error
+
+    // Also update the "current" game for backward compatibility
+    const { data: gameData, error: gameError } = await supabaseAdmin
+      .from("games")
+      .select("current_question_id, status")
+      .eq("id", gameId)
+      .single()
+
+    if (gameError) throw gameError
+
+    // Update the "current" game entry
+    const { error: currentError } = await supabaseAdmin
+      .from("games")
+      .update({
+        current_question_id: gameData.current_question_id,
+        status: gameData.status,
+      })
+      .eq("id", "current")
+
+    if (currentError) throw currentError
+
+    // Trigger Pusher event to notify all clients about the game change
+    try {
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.GAME_CHANGE, {
+        gameId,
+        timestamp: Date.now(),
+      })
+    } catch (pusherError) {
+      console.error("Error triggering Pusher event:", pusherError)
+      // Continue execution even if Pusher fails
+    }
+
+    return { success: true }
+  } catch (error) {
+    console.error("Error setting active game:", error)
+    return { success: false, error: "Failed to set active game" }
+  }
+}
+
+// Delete a game
+export async function deleteGame(gameId: string) {
+  // Check if admin is authenticated
+  const adminToken = cookies().get("adminToken")?.value
+  if (!adminToken) {
+    return { success: false, error: "Unauthorized" }
+  }
+
+  try {
+    // Check if the game is active
+    const { data: game, error: checkError } = await supabaseAdmin
+      .from("games")
+      .select("is_active")
+      .eq("id", gameId)
+      .single()
+
+    if (checkError) throw checkError
+
+    if (game.is_active) {
+      return { success: false, error: "Cannot delete an active game" }
+    }
+
+    // Get all questions for this game
+    const { data: questions, error: questionsError } = await supabaseAdmin
+      .from("questions")
+      .select("id")
+      .eq("game_id", gameId)
+
+    if (questionsError) throw questionsError
+
+    // Delete all answers for questions in this game
+    if (questions && questions.length > 0) {
+      const questionIds = questions.map((q) => q.id)
+
+      // Delete answers for these questions
+      const { error: answersError } = await supabaseAdmin.from("answers").delete().in("question_id", questionIds)
+
+      if (answersError) {
+        console.error("Error deleting answers:", answersError)
+        // Continue with deletion even if this fails
+      }
+
+      // Delete answer options for these questions
+      const { error: optionsError } = await supabaseAdmin.from("answer_options").delete().in("question_id", questionIds)
+
+      if (optionsError) {
+        console.error("Error deleting answer options:", optionsError)
+        // Continue with deletion even if this fails
+      }
+
+      // Delete questions
+      const { error: deleteQuestionsError } = await supabaseAdmin.from("questions").delete().eq("game_id", gameId)
+
+      if (deleteQuestionsError) throw deleteQuestionsError
+    }
+
+    // Finally, delete the game
+    const { error } = await supabaseAdmin.from("games").delete().eq("id", gameId)
+
+    if (error) throw error
+
+    return { success: true }
+  } catch (error) {
+    console.error("Error deleting game:", error)
+    return { success: false, error: "Failed to delete game" }
   }
 }

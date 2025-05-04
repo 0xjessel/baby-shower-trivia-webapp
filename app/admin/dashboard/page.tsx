@@ -10,6 +10,7 @@ import { toast } from "@/hooks/use-toast"
 import QuestionForm from "@/components/question-form"
 import QuestionList from "@/components/question-list"
 import GameStats from "@/components/game-stats"
+import GameManager from "@/components/game-manager" // Import the new component
 import { Clock, ChevronLeft, ChevronRight, Trophy, Users } from "lucide-react"
 
 export default function AdminDashboardPage() {
@@ -21,6 +22,7 @@ export default function AdminDashboardPage() {
   const [isLastQuestion, setIsLastQuestion] = useState(false)
   const router = useRouter()
   const [activePlayers, setActivePlayers] = useState(0)
+  const [activeGameName, setActiveGameName] = useState<string>("Current Game")
 
   useEffect(() => {
     // Check if user is authenticated as admin
@@ -34,6 +36,7 @@ export default function AdminDashboardPage() {
           fetchGameState()
           fetchQuestions()
           fetchActivePlayers() // Fetch active players initially
+          fetchActiveGame() // Fetch active game name
         }
         setIsLoading(false)
       })
@@ -47,6 +50,26 @@ export default function AdminDashboardPage() {
 
     return () => clearInterval(interval)
   }, [router])
+
+  // Fetch active game name
+  const fetchActiveGame = async () => {
+    try {
+      const response = await fetch("/api/active-game", {
+        headers: {
+          "Cache-Control": "no-cache",
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.game && data.game.name) {
+          setActiveGameName(data.game.name)
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching active game:", error)
+    }
+  }
 
   // Fetch current game state to get current question
   const fetchGameState = async () => {
@@ -296,6 +319,7 @@ export default function AdminDashboardPage() {
         <div className="mb-6 text-center">
           <h1 className="text-3xl font-bold text-arcane-blue">Admin Dashboard</h1>
           <p className="mt-2 text-arcane-gray">Manage Baby Jayce's League Challenge</p>
+          <p className="mt-1 text-arcane-gold font-medium">Active Game: {activeGameName}</p>
         </div>
 
         <div className="grid gap-6">
@@ -369,7 +393,7 @@ export default function AdminDashboardPage() {
           </Card>
 
           <Tabs defaultValue="questions" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 bg-arcane-navy border border-arcane-blue/30">
+            <TabsList className="grid w-full grid-cols-4 bg-arcane-navy border border-arcane-blue/30">
               <TabsTrigger
                 value="questions"
                 className="data-[state=active]:bg-arcane-blue data-[state=active]:text-arcane-navy text-arcane-gray-light"
@@ -387,6 +411,12 @@ export default function AdminDashboardPage() {
                 className="data-[state=active]:bg-arcane-blue data-[state=active]:text-arcane-navy text-arcane-gray-light"
               >
                 Game Stats
+              </TabsTrigger>
+              <TabsTrigger
+                value="games"
+                className="data-[state=active]:bg-arcane-blue data-[state=active]:text-arcane-navy text-arcane-gray-light"
+              >
+                Games
               </TabsTrigger>
             </TabsList>
 
@@ -414,6 +444,14 @@ export default function AdminDashboardPage() {
               <Card className="border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
                 <CardContent className="pt-6">
                   <GameStats />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="games">
+              <Card className="border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
+                <CardContent className="pt-6">
+                  <GameManager />
                 </CardContent>
               </Card>
             </TabsContent>

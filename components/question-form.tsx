@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,7 +13,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Switch } from "@/components/ui/switch"
 
 interface QuestionFormProps {
-  onSubmit: (formData: FormData) => Promise<{ success: boolean; error?: string }>
+  onSubmit: (formData: FormData) => Promise<{ success: boolean; error?: string; gameId?: string }>
 }
 
 export default function QuestionForm({ onSubmit }: QuestionFormProps) {
@@ -23,6 +23,24 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
+  const [games, setGames] = useState<any[]>([])
+
+  useEffect(() => {
+    // Fetch games for the dropdown
+    const fetchGames = async () => {
+      try {
+        const response = await fetch("/api/games")
+        if (response.ok) {
+          const data = await response.json()
+          setGames(data.games || [])
+        }
+      } catch (error) {
+        console.error("Error fetching games:", error)
+      }
+    }
+
+    fetchGames()
+  }, [])
 
   const handleOptionChange = (index: number, value: string) => {
     const newOptions = [...options]
@@ -87,6 +105,25 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="space-y-2">
+        <Label htmlFor="game-id" className="text-arcane-gray-light">
+          Game
+        </Label>
+        <select
+          id="game-id"
+          name="game_id"
+          className="w-full rounded-md border border-arcane-blue/30 bg-arcane-navy/50 text-arcane-gray-light focus:border-arcane-blue focus:ring-arcane-blue p-2"
+          required
+        >
+          <option value="">Select a game</option>
+          {games.map((game) => (
+            <option key={game.id} value={game.id}>
+              {game.name} {game.is_active ? "(Active)" : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <div className="space-y-4">
         <div>
           <Label htmlFor="question-type" className="text-arcane-gray-light">
@@ -96,7 +133,7 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
             value={questionType}
             onValueChange={(value) => setQuestionType(value as "baby-picture" | "text")}
             className="mt-2 flex space-x-4"
-            name="question-type" // Add name attribute
+            name="question-type"
           >
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="baby-picture" id="baby-picture" className="text-arcane-blue" />

@@ -30,15 +30,30 @@ export async function GET() {
     }
 
     // Get current game state first to determine if we need to fetch question details
-    const { data: game, error: gameError } = await supabaseAdmin
+    const { data: activeGame, error: gameError } = await supabaseAdmin
       .from("games")
-      .select("current_question_id, status")
-      .eq("id", "current")
-      .maybeSingle()
+      .select("id, current_question_id, status")
+      .eq("is_active", true)
+      .single()
+
+    let game
 
     if (gameError) {
-      console.error("Error fetching game state:", gameError)
-      return NextResponse.json({ error: "Failed to fetch game state" }, { status: 500 })
+      // Fall back to the "current" game for backward compatibility
+      const { data: fallbackGame, error: fallbackError } = await supabaseAdmin
+        .from("games")
+        .select("current_question_id, status")
+        .eq("id", "current")
+        .maybeSingle()
+
+      if (fallbackError) {
+        console.error("Error fetching game state:", fallbackError)
+        return NextResponse.json({ error: "Failed to fetch game state" }, { status: 500 })
+      }
+
+      game = fallbackGame
+    } else {
+      game = activeGame
     }
 
     // If there's no active question or game is in waiting state
