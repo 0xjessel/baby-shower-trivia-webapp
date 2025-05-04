@@ -20,7 +20,7 @@ export default function AdminDashboardPage() {
   const [currentQuestionId, setCurrentQuestionId] = useState<string | null>(null)
   const [questions, setQuestions] = useState<any[]>([])
   const [isLastQuestion, setIsLastQuestion] = useState(false)
-  const [router] = useRouter()
+  const router = useRouter()
   const [activePlayers, setActivePlayers] = useState(0)
   const [activeGameName, setActiveGameName] = useState<string>("Current Game")
 
