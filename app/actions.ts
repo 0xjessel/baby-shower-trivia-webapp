@@ -725,10 +725,13 @@ export async function resetGame() {
 
     if (answersError) throw answersError
 
-    // Clear all custom answers
-    const { error: customAnswersError } = await supabaseAdmin.from("custom_answers").delete()
+    // Clear all custom answers (stored in answer_options with is_custom=true)
+    const { error: customAnswersError } = await supabaseAdmin.from("answer_options").delete().eq("is_custom", true)
 
-    if (customAnswersError) throw customAnswersError
+    if (customAnswersError) {
+      console.error("Error deleting custom answers:", customAnswersError)
+      // Continue even if custom answer deletion fails
+    }
 
     // Trigger Pusher event to notify all clients
     try {
@@ -908,8 +911,12 @@ export async function deleteQuestion(id: string) {
       // Continue even if answer deletion fails
     }
 
-    // Delete any custom answers for this question
-    const { error: customAnswersError } = await supabaseAdmin.from("custom_answers").delete().eq("question_id", id)
+    // Delete any custom answers for this question (stored in answer_options with is_custom=true)
+    const { error: customAnswersError } = await supabaseAdmin
+      .from("answer_options")
+      .delete()
+      .eq("question_id", id)
+      .eq("is_custom", true)
 
     if (customAnswersError) {
       console.error("Error deleting custom answers:", customAnswersError)

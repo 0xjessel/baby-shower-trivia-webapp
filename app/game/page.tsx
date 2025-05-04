@@ -648,6 +648,12 @@ export default function GamePage() {
   const handleAnswerChange = async (value: string) => {
     if (!currentQuestion) return
 
+    // If the user clicks on the same option they've already selected, do nothing
+    if (value === selectedAnswer) {
+      console.log("[DEBUG] Same option clicked, ignoring:", value)
+      return
+    }
+
     const previousAnswer = previousAnswerRef.current
 
     console.log("[DEBUG] Answer changed:", {
