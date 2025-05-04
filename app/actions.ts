@@ -740,6 +740,7 @@ export async function showResults() {
 }
 
 // Reset the game
+// Reset all games
 export async function resetGame() {
   // Check if admin
   const adminToken = cookies().get("adminToken")?.value
@@ -748,18 +749,18 @@ export async function resetGame() {
   }
 
   try {
-    // Reset game state
+    // Reset all game states
     const { error: gameError } = await supabaseAdmin
       .from("games")
       .update({
         current_question_id: null,
         status: "waiting",
       })
-      .eq("id", "current")
+      .neq("id", "none") // Update all games
 
     if (gameError) throw gameError
 
-    // Instead of trying to delete all answers at once, get all answers first
+    // Delete all answers
     const { data: allAnswers, error: fetchError } = await supabaseAdmin.from("answers").select("id")
 
     if (fetchError) throw fetchError
@@ -793,6 +794,97 @@ export async function resetGame() {
     } catch (pusherError) {
       console.error("Error triggering Pusher event:", pusherError)
       // Continue execution even if Pusher fails
+    }
+
+    revalidatePath("/admin/dashboard")
+
+    return { success: true }
+  } catch (error) {
+    console.error("Error resetting games:", error)
+    return { success: false, error: "Failed to reset games" }
+  }
+}
+
+// Add a new function to reset a single game
+// Reset a single game
+export async function resetSingleGame(gameId: string) {
+  // Check if admin
+  const adminToken = cookies().get("adminToken")?.value
+  if (!adminToken) {
+    return { success: false, error: "Unauthorized" }
+  }
+
+  try {
+    // Reset the specific game state
+    const { error: gameError } = await supabaseAdmin
+      .from("games")
+      .update({
+        current_question_id: null,
+        status: "waiting",
+      })
+      .eq("id", gameId)
+
+    if (gameError) throw gameError
+
+    // Get all questions for this game
+    const { data: questions, error: questionsError } = await supabaseAdmin
+      .from("questions")
+      .select("id")
+      .eq("game_id", gameId)
+
+    if (questionsError) throw questionsError
+
+    if (questions && questions.length > 0) {
+      const questionIds = questions.map((q) => q.id)
+
+      // Delete answers for these questions
+      for (const questionId of questionIds) {
+        const { data: answers, error: answersError } = await supabaseAdmin
+          .from("answers")
+          .select("id")
+          .eq("question_id", questionId)
+
+        if (answersError) {
+          console.error(`Error fetching answers for question ${questionId}:`, answersError)
+          continue
+        }
+
+        if (answers && answers.length > 0) {
+          for (const answer of answers) {
+            const { error: deleteError } = await supabaseAdmin.from("answers").delete().eq("id", answer.id)
+
+            if (deleteError) {
+              console.error(`Error deleting answer ${answer.id}:`, deleteError)
+            }
+          }
+        }
+
+        // Delete custom answers for this question
+        const { error: customAnswersError } = await supabaseAdmin
+          .from("answer_options")
+          .delete()
+          .eq("question_id", questionId)
+          .eq("is_custom", true)
+
+        if (customAnswersError) {
+          console.error(`Error deleting custom answers for question ${questionId}:`, customAnswersError)
+        }
+      }
+    }
+
+    // If this is the active game, trigger a game reset event
+    const { data: game, error: gameCheckError } = await supabaseAdmin
+      .from("games")
+      .select("is_active")
+      .eq("id", gameId)
+      .single()
+
+    if (!gameCheckError && game && game.is_active) {
+      try {
+        await pusherServer.trigger(GAME_CHANNEL, EVENTS.GAME_RESET, {})
+      } catch (pusherError) {
+        console.error("Error triggering Pusher event:", pusherError)
+      }
     }
 
     revalidatePath("/admin/dashboard")

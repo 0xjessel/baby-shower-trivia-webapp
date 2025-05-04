@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/hooks/use-toast"
-import { createGame, setActiveGame, deleteGame } from "@/app/actions"
+import { createGame, setActiveGame, deleteGame, resetSingleGame } from "@/app/actions"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,7 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { CheckCircle, Trash2, PlusCircle } from "lucide-react"
+import { CheckCircle, Trash2, PlusCircle, RotateCcw } from "lucide-react"
 
 interface Game {
   id: string
@@ -171,6 +171,39 @@ export default function GameManager() {
     }
   }
 
+  const handleResetGame = async (gameId: string) => {
+    if (
+      window.confirm(
+        "Are you sure you want to reset this game? This will clear all answers for questions in this game.",
+      )
+    ) {
+      try {
+        const result = await resetSingleGame(gameId)
+
+        if (result.success) {
+          toast({
+            title: "Game reset",
+            description: "The game has been reset successfully.",
+          })
+          fetchGames()
+        } else {
+          toast({
+            title: "Error",
+            description: result.error || "Failed to reset game",
+            variant: "destructive",
+          })
+        }
+      } catch (error) {
+        console.error("Error resetting game:", error)
+        toast({
+          title: "Error",
+          description: "An unexpected error occurred",
+          variant: "destructive",
+        })
+      }
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="text-center py-8">
@@ -294,6 +327,15 @@ export default function GameManager() {
                         Set Active
                       </Button>
                     )}
+                    <Button
+                      onClick={() => handleResetGame(game.id)}
+                      variant="outline"
+                      size="sm"
+                      className="border-amber-500 text-amber-500 hover:bg-amber-500/10 flex items-center gap-1"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Reset
+                    </Button>
                     <Button
                       onClick={() => confirmDelete(game.id)}
                       variant="ghost"
