@@ -298,16 +298,18 @@ export async function submitAnswer(questionId: string, answerText: string) {
       return { success: false, error: "Invalid answer option" }
     }
 
-    // Get the correct answer for this question
+    // Get the question details including correct_answer and no_correct_answer flag
     const { data: question, error: questionError } = await supabaseAdmin
       .from("questions")
-      .select("correct_answer")
+      .select("correct_answer, no_correct_answer")
       .eq("id", questionId)
       .single()
 
     if (questionError) throw questionError
 
-    const isCorrect = question.correct_answer === answerText
+    // If the question has no correct answer, all answers are considered "correct" (or none are)
+    // For display purposes, we'll consider all answers "correct" for opinion questions
+    const isCorrect = question.no_correct_answer ? true : question.correct_answer === answerText
 
     // Check if the participant has already answered this question
     const { data: existingAnswer, error: checkError } = await supabaseAdmin
@@ -1007,68 +1009,99 @@ export async function uploadQuestion(formData: FormData) {
   // Check if admin
   const adminToken = cookies().get("adminToken")?.value
   if (!adminToken) {
+    console.log("[SERVER] uploadQuestion: Unauthorized - no admin token")
     return { success: false, error: "Unauthorized" }
   }
 
   try {
+    console.log("[SERVER] uploadQuestion: Starting question upload process")
+
     // Get the question type from the form data
     const questionType = formData.get("type") as "baby-picture" | "text"
+    console.log(`[SERVER] uploadQuestion: Question type: ${questionType}`)
 
     if (!questionType) {
+      console.log("[SERVER] uploadQuestion: Missing question type")
       return { success: false, error: "Question type is required" }
     }
 
     const questionText = formData.get("question") as string
+    console.log(
+      `[SERVER] uploadQuestion: Question text: ${questionText?.substring(0, 50)}${questionText?.length > 50 ? "..." : ""}`,
+    )
 
     if (!questionText) {
+      console.log("[SERVER] uploadQuestion: Missing question text")
       return { success: false, error: "Question text is required" }
     }
 
     // Get the game ID
     const gameId = formData.get("game_id") as string
+    console.log(`[SERVER] uploadQuestion: Game ID: ${gameId}`)
 
     if (!gameId) {
+      console.log("[SERVER] uploadQuestion: Missing game ID")
       return { success: false, error: "Game selection is required" }
     }
 
     // Check if the game exists
     const { data: game, error: gameError } = await supabaseAdmin.from("games").select("id").eq("id", gameId).single()
+    console.log(
+      `[SERVER] uploadQuestion: Game check result: ${game ? "found" : "not found"}, error: ${gameError ? gameError.message : "none"}`,
+    )
 
     if (gameError || !game) {
+      console.log("[SERVER] uploadQuestion: Game not found")
       return { success: false, error: "Selected game not found" }
     }
 
     // Check if this is a question with no prefilled options
     const noPrefilledOptions = formData.get("no_prefilled_options") === "true"
+    console.log(`[SERVER] uploadQuestion: No prefilled options: ${noPrefilledOptions}`)
 
     // Get options
     const options: string[] = []
     let correctAnswerIndex = Number.parseInt(formData.get("correctAnswerIndex") as string) || 0
     const noCorrectAnswer = formData.get("no_correct_answer") === "true"
+    console.log(
+      `[SERVER] uploadQuestion: No correct answer: ${noCorrectAnswer}, Correct answer index: ${correctAnswerIndex}`,
+    )
 
     // Only collect options if we're not using the "no prefilled options" mode
     if (!noPrefilledOptions) {
+      // Log all form data keys for debugging
+      console.log("[SERVER] uploadQuestion: Form data keys:", Array.from(formData.keys()))
+
       for (let i = 0; i < 10; i++) {
         const option = formData.get(`option_${i}`)
         if (option && (option as string).trim()) {
           options.push((option as string).trim())
+          console.log(`[SERVER] uploadQuestion: Added option ${i}: "${(option as string).trim()}"`)
         }
       }
 
+      console.log(`[SERVER] uploadQuestion: Total options collected: ${options.length}`)
+
       // Validate options unless we're in "no prefilled options" mode
       if (options.length < 2 && !noPrefilledOptions) {
+        console.log("[SERVER] uploadQuestion: Not enough options")
         return { success: false, error: "At least 2 options are required" }
       }
 
       if (correctAnswerIndex >= options.length) {
+        console.log(
+          `[SERVER] uploadQuestion: Correct answer index ${correctAnswerIndex} is out of bounds, resetting to 0`,
+        )
         correctAnswerIndex = 0
       }
     }
 
     // Make sure custom answers are enabled if there are no prefilled options
     const allowsCustomAnswers = formData.get("allows_custom_answers") !== "false"
+    console.log(`[SERVER] uploadQuestion: Allows custom answers: ${allowsCustomAnswers}`)
 
     if (noPrefilledOptions && !allowsCustomAnswers) {
+      console.log("[SERVER] uploadQuestion: Custom answers must be enabled with no prefilled options")
       return { success: false, error: "Custom answers must be enabled when using no prefilled options" }
     }
 
@@ -1076,35 +1109,56 @@ export async function uploadQuestion(formData: FormData) {
 
     // Handle image upload for baby picture questions
     if (questionType === "baby-picture") {
+      console.log("[SERVER] uploadQuestion: Processing baby picture upload")
       const image = formData.get("image") as File
 
-      if (!image || image.size === 0) {
+      if (!image) {
+        console.log("[SERVER] uploadQuestion: No image file found in form data")
+        return { success: false, error: "Image is required for baby picture questions" }
+      }
+
+      console.log(`[SERVER] uploadQuestion: Image file: ${image.name}, size: ${image.size}, type: ${image.type}`)
+
+      if (image.size === 0) {
+        console.log("[SERVER] uploadQuestion: Image file has zero size")
         return { success: false, error: "Image is required for baby picture questions" }
       }
 
       // Check if the bucket exists and create it if it doesn't
-      const { data: buckets } = await supabaseAdmin.storage.listBuckets()
+      console.log("[SERVER] uploadQuestion: Checking if storage bucket exists")
+      const { data: buckets, error: bucketsError } = await supabaseAdmin.storage.listBuckets()
+
+      if (bucketsError) {
+        console.log(`[SERVER] uploadQuestion: Error listing buckets: ${bucketsError.message}`)
+      }
+
+      console.log(`[SERVER] uploadQuestion: Found ${buckets?.length || 0} buckets`)
       const bucketExists = buckets?.some((bucket) => bucket.name === "baby-pictures")
+      console.log(`[SERVER] uploadQuestion: baby-pictures bucket exists: ${bucketExists}`)
 
       if (!bucketExists) {
         // Create the bucket
+        console.log("[SERVER] uploadQuestion: Creating baby-pictures bucket")
         const { error: createBucketError } = await supabaseAdmin.storage.createBucket("baby-pictures", {
           public: false, // Private bucket for secure access
         })
 
         if (createBucketError) {
-          console.error("Error creating bucket:", createBucketError)
+          console.error("[SERVER] uploadQuestion: Error creating bucket:", createBucketError)
           return {
             success: false,
             error:
               "Failed to create storage bucket. Please contact the administrator to set up the storage bucket in Supabase.",
           }
         }
+        console.log("[SERVER] uploadQuestion: Successfully created baby-pictures bucket")
       }
 
       // Upload image to Supabase Storage
       const fileName = `${generateId()}-${image.name.replace(/\s+/g, "-").toLowerCase()}`
+      console.log(`[SERVER] uploadQuestion: Generated file name: ${fileName}`)
 
+      console.log("[SERVER] uploadQuestion: Starting image upload to Supabase")
       const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
         .from("baby-pictures")
         .upload(fileName, image, {
@@ -1113,36 +1167,65 @@ export async function uploadQuestion(formData: FormData) {
         })
 
       if (uploadError) {
-        console.error("Error uploading image:", uploadError)
-        return { success: false, error: "Failed to upload image. Please try again." }
+        console.error("[SERVER] uploadQuestion: Error uploading image:", uploadError)
+        return { success: false, error: `Failed to upload image: ${uploadError.message}` }
       }
+
+      console.log(`[SERVER] uploadQuestion: Image uploaded successfully: ${uploadData?.path}`)
 
       // Instead of getting a public URL, we'll store just the file path
       // We'll generate signed URLs when needed
       imageUrl = `baby-pictures/${fileName}`
+      console.log(`[SERVER] uploadQuestion: Image URL set to: ${imageUrl}`)
     }
 
     // Insert the question into the database with a proper UUID
     const questionId = generateUUID()
+    console.log(`[SERVER] uploadQuestion: Generated question ID: ${questionId}`)
 
-    const { error } = await supabaseAdmin.from("questions").insert({
-      id: questionId,
-      type: questionType,
-      question: questionText,
-      image_url: imageUrl,
-      options: options,
-      correct_answer: noCorrectAnswer || noPrefilledOptions ? null : options[correctAnswerIndex],
-      allows_custom_answers: allowsCustomAnswers,
-      game_id: gameId, // Associate with the selected game
-    })
+    // Use a special placeholder value instead of null for questions with no correct answer
+    // This is needed because the database schema has a NOT NULL constraint on correct_answer
+    const correctAnswer =
+      noCorrectAnswer || noPrefilledOptions
+        ? options.length > 0
+          ? options[0]
+          : "NONE" // Use first option or "NONE" as placeholder
+        : options[correctAnswerIndex]
 
-    if (error) throw error
+    console.log(
+      `[SERVER] uploadQuestion: Correct answer: ${correctAnswer} (${noCorrectAnswer || noPrefilledOptions ? "placeholder - no actual correct answer" : "actual correct answer"})`,
+    )
 
+    // Add a flag to indicate if this question has no correct answer
+    const hasNoCorrectAnswer = noCorrectAnswer || noPrefilledOptions
+
+    console.log("[SERVER] uploadQuestion: Inserting question into database")
+    const { error, data } = await supabaseAdmin
+      .from("questions")
+      .insert({
+        id: questionId,
+        type: questionType,
+        question: questionText,
+        image_url: imageUrl,
+        options: options,
+        correct_answer: correctAnswer, // This will never be null now
+        allows_custom_answers: allowsCustomAnswers,
+        no_correct_answer: hasNoCorrectAnswer, // Add this flag to indicate if there's no correct answer
+        game_id: gameId, // Associate with the selected game
+      })
+      .select()
+
+    if (error) {
+      console.error("[SERVER] uploadQuestion: Database error:", error)
+      throw error
+    }
+
+    console.log(`[SERVER] uploadQuestion: Question inserted successfully: ${data?.[0]?.id}`)
     revalidatePath("/admin/dashboard")
 
     return { success: true, gameId }
   } catch (error) {
-    console.error("Error adding question:", error)
+    console.error("[SERVER] uploadQuestion: Error adding question:", error)
     return { success: false, error: "Failed to add question" }
   }
 }
