@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Trash2, PlayCircle, Users } from "lucide-react"
+import { Trash2, PlayCircle, Users, Edit2 } from "lucide-react"
 import { deleteQuestion, setActiveQuestion } from "@/app/actions"
 import { usePusher } from "@/hooks/use-pusher"
 import { EVENTS } from "@/lib/pusher-client"
@@ -40,6 +40,9 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
   const [voteCounts, setVoteCounts] = useState<Record<string, VoteCounts>>({})
   const [customAnswers, setCustomAnswers] = useState<Record<string, CustomAnswer[]>>({})
   const [totalVotes, setTotalVotes] = useState<Record<string, number>>({})
+  const [editMode, setEditMode] = useState<Record<string, boolean>>({})
+  const [editCorrectAnswer, setEditCorrectAnswer] = useState<Record<string, string>>( {})
+  const [isSaving, setIsSaving] = useState<Record<string, boolean>>({})
   const { gameChannel } = usePusher()
   const [localCurrentQuestionId, setLocalCurrentQuestionId] = useState<string | null>(currentQuestionId || null)
   const lastVoteUpdateId = useRef<Record<string, string>>({})
@@ -394,6 +397,46 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
     fetchQuestions()
   }
 
+  // Handler to toggle edit mode
+  const handleEditClick = (questionId: string, currentCorrect: string) => {
+    setEditMode((prev) => ({ ...prev, [questionId]: true }))
+    setEditCorrectAnswer((prev) => ({ ...prev, [questionId]: currentCorrect }))
+  }
+
+  // Handler to cancel edit
+  const handleCancelEdit = (questionId: string) => {
+    setEditMode((prev) => ({ ...prev, [questionId]: false }))
+  }
+
+  // Handler to save the new correct answer
+  const handleSaveCorrectAnswer = async (questionId: string) => {
+    setIsSaving((prev) => ({ ...prev, [questionId]: true }))
+    const newCorrect = editCorrectAnswer[questionId]
+    try {
+      const res = await fetch("/api/questions/correct-answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionId, correctAnswer: newCorrect }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setQuestions((prev) => prev.map((q) => q.id === questionId ? { ...q, correctAnswer: newCorrect } : q))
+        setEditMode((prev) => ({ ...prev, [questionId]: false }))
+      } else {
+        alert(data.error || "Failed to update correct answer.")
+      }
+    } catch (err) {
+      alert("Error updating correct answer.")
+    } finally {
+      setIsSaving((prev) => ({ ...prev, [questionId]: false }))
+    }
+  }
+
+  // Handler for selecting a new correct answer
+  const handleSelectCorrect = (questionId: string, option: string) => {
+    setEditCorrectAnswer((prev) => ({ ...prev, [questionId]: option }))
+  }
+
   if (isLoading) {
     return (
       <div className="text-center py-8">
@@ -460,7 +503,7 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
 
                     {/* Vote count pill - always show for all questions */}
                     <span className="inline-flex items-center rounded-full bg-arcane-blue/10 px-2 py-1 text-xs font-medium text-arcane-blue">
-                      <Users className="mr-1 h-3 w-3" />
+                      <Users className="h-3 w-3 mr-1" />
                       {questionVotes} vote{questionVotes !== 1 ? "s" : ""}
                     </span>
 
@@ -511,7 +554,8 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
                     return (
                       <div
                         key={option}
-                        className="relative overflow-hidden rounded-md border border-arcane-blue/20 bg-arcane-navy/50 p-2"
+                        className={`relative overflow-hidden rounded-md border border-arcane-blue/20 bg-arcane-navy/50 p-2 ${editMode[question.id] ? "cursor-pointer" : ""}`}
+                        onClick={() => editMode[question.id] && handleSelectCorrect(question.id, option)}
                       >
                         {/* Background progress bar */}
                         <div
@@ -521,9 +565,16 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
                         <div className="relative flex items-center justify-between z-10">
                           <div className="flex-1">
                             <span
-                              className={`${option === question.correctAnswer ? "text-green-500 font-medium" : "text-arcane-gray-light"}`}
+                              className={
+                                option === question.correctAnswer
+                                  ? "text-green-500 font-medium"
+                                  : "text-arcane-gray-light"
+                              }
                             >
                               {option} {option === question.correctAnswer && "(Correct)"}
+                              {editMode[question.id] && editCorrectAnswer[question.id] === option && (
+                                <span className="ml-2 text-xs text-arcane-gold">[Selected]</span>
+                              )}
                             </span>
                           </div>
                           <div className="flex items-center text-xs text-arcane-gold">
@@ -565,6 +616,40 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
                     )
                   })}
                 </div>
+              </div>
+              {/* Edit and Save/Cancel Controls for Admin */}
+              <div className="flex gap-2 mt-2">
+                {!editMode[question.id] && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex items-center gap-1"
+                    onClick={() => handleEditClick(question.id, question.correctAnswer)}
+                  >
+                    <Edit2 className="h-4 w-4" /> Edit Correct Answer
+                  </Button>
+                )}
+                {editMode[question.id] && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="success"
+                      className="flex items-center gap-1"
+                      onClick={() => handleSaveCorrectAnswer(question.id)}
+                      disabled={isSaving[question.id]}
+                    >
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleCancelEdit(question.id)}
+                      disabled={isSaving[question.id]}
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>
