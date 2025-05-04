@@ -11,6 +11,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { PlusCircle, X } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
 
 interface QuestionFormProps {
   onSubmit: (formData: FormData) => Promise<{ success: boolean; error?: string; gameId?: string }>
@@ -20,10 +21,12 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
   const [questionType, setQuestionType] = useState<"baby-picture" | "text">("baby-picture")
   const [options, setOptions] = useState<string[]>(["", "", "", ""])
   const [correctAnswer, setCorrectAnswer] = useState<number>(0)
+  const [hasNoCorrectAnswer, setHasNoCorrectAnswer] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
   const [games, setGames] = useState<any[]>([])
+  const [activeGameId, setActiveGameId] = useState<string>("")
 
   useEffect(() => {
     // Fetch games for the dropdown
@@ -33,6 +36,12 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
         if (response.ok) {
           const data = await response.json()
           setGames(data.games || [])
+
+          // Find the active game
+          const activeGame = data.games?.find((game: any) => game.is_active)
+          if (activeGame) {
+            setActiveGameId(activeGame.id)
+          }
         }
       } catch (error) {
         console.error("Error fetching games:", error)
@@ -81,7 +90,14 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
     options.forEach((option, index) => {
       formData.append(`option_${index}`, option)
     })
-    formData.append("correctAnswerIndex", correctAnswer.toString())
+
+    // Handle the case of no correct answer
+    if (hasNoCorrectAnswer) {
+      formData.append("no_correct_answer", "true")
+      formData.append("correctAnswerIndex", "-1")
+    } else {
+      formData.append("correctAnswerIndex", correctAnswer.toString())
+    }
 
     try {
       const result = await onSubmit(formData)
@@ -91,6 +107,7 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
         form.reset()
         setOptions(["", "", "", ""])
         setCorrectAnswer(0)
+        setHasNoCorrectAnswer(false)
         setQuestionType("baby-picture")
       } else {
         setError(result.error || "Failed to add question")
@@ -114,6 +131,8 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
           name="game_id"
           className="w-full rounded-md border border-arcane-blue/30 bg-arcane-navy/50 text-arcane-gray-light focus:border-arcane-blue focus:ring-arcane-blue p-2"
           required
+          value={activeGameId}
+          onChange={(e) => setActiveGameId(e.target.value)}
         >
           <option value="">Select a game</option>
           {games.map((game) => (
@@ -196,34 +215,75 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
           </div>
 
           <div className="mt-2 space-y-3">
-            <RadioGroup
-              value={correctAnswer.toString()}
-              onValueChange={(value) => setCorrectAnswer(Number.parseInt(value))}
-              name="correctAnswer"
-            >
-              {options.map((option, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <RadioGroupItem value={index.toString()} id={`correct-${index}`} className="text-arcane-blue" />
-                  <Input
-                    value={option}
-                    onChange={(e) => handleOptionChange(index, e.target.value)}
-                    placeholder={`Option ${index + 1}`}
-                    className="border-arcane-blue/30 bg-arcane-navy/50 text-arcane-gray-light focus:border-arcane-blue focus:ring-arcane-blue"
-                    required
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeOption(index)}
-                    disabled={options.length <= 2}
-                    className="h-8 w-8 text-arcane-gray"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-            </RadioGroup>
+            <div className="flex items-center space-x-2 mb-2">
+              <Checkbox
+                id="no-correct-answer"
+                checked={hasNoCorrectAnswer}
+                onCheckedChange={(checked) => setHasNoCorrectAnswer(checked === true)}
+                className="data-[state=checked]:bg-arcane-blue data-[state=checked]:border-arcane-blue"
+              />
+              <Label htmlFor="no-correct-answer" className="text-arcane-gray-light">
+                No correct answer (opinion question)
+              </Label>
+            </div>
+
+            {!hasNoCorrectAnswer && (
+              <RadioGroup
+                value={correctAnswer.toString()}
+                onValueChange={(value) => setCorrectAnswer(Number.parseInt(value))}
+                name="correctAnswer"
+              >
+                {options.map((option, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <RadioGroupItem value={index.toString()} id={`correct-${index}`} className="text-arcane-blue" />
+                    <Input
+                      value={option}
+                      onChange={(e) => handleOptionChange(index, e.target.value)}
+                      placeholder={`Option ${index + 1}`}
+                      className="border-arcane-blue/30 bg-arcane-navy/50 text-arcane-gray-light focus:border-arcane-blue focus:ring-arcane-blue"
+                      required
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeOption(index)}
+                      disabled={options.length <= 2}
+                      className="h-8 w-8 text-arcane-gray"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </RadioGroup>
+            )}
+
+            {hasNoCorrectAnswer && (
+              <>
+                {options.map((option, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <div className="w-5"></div> {/* Spacer to align with radio buttons */}
+                    <Input
+                      value={option}
+                      onChange={(e) => handleOptionChange(index, e.target.value)}
+                      placeholder={`Option ${index + 1}`}
+                      className="border-arcane-blue/30 bg-arcane-navy/50 text-arcane-gray-light focus:border-arcane-blue focus:ring-arcane-blue"
+                      required
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeOption(index)}
+                      disabled={options.length <= 2}
+                      className="h-8 w-8 text-arcane-gray"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </div>
       </div>

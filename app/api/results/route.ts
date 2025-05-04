@@ -22,11 +22,11 @@ export async function GET() {
       return NextResponse.json({ error: "Participant not found" }, { status: 401 })
     }
 
-    // Get game status
-    const { data: game, error: gameError } = await supabaseAdmin
+    // Get active game
+    const { data: activeGame, error: gameError } = await supabaseAdmin
       .from("games")
-      .select("status")
-      .eq("id", "current")
+      .select("id, status")
+      .eq("is_active", true)
       .maybeSingle()
 
     if (gameError) {
@@ -34,8 +34,8 @@ export async function GET() {
     }
 
     // Only show results if the game is in results mode
-    if (!game || game.status !== "results") {
-      console.log("Game status is not 'results':", game?.status)
+    if (!activeGame || activeGame.status !== "results") {
+      console.log("Game status is not 'results':", activeGame?.status)
       return NextResponse.json({ waiting: true })
     }
 
@@ -91,7 +91,7 @@ export async function GET() {
           questionId: question.id,
           question: question.question,
           imageUrl: imageUrl,
-          correctAnswer: question.correct_answer,
+          correctAnswer: question.correct_answer || "No correct answer",
           yourAnswer: answerOption.text,
           isCorrect: a.is_correct,
         }
@@ -101,7 +101,25 @@ export async function GET() {
     // Filter out any null results
     const validResults = results.filter((r) => r !== null)
 
-    return NextResponse.json({ results: validResults })
+    // Get participant ranking
+    const { data: rankings, error: rankingsError } = await supabaseAdmin.rpc("get_participant_rankings")
+
+    if (rankingsError) {
+      console.error("Error fetching rankings:", rankingsError)
+      return NextResponse.json({ results: validResults }) // Return results without ranking if there's an error
+    }
+
+    // Find the current participant's rank
+    const participantRanking = rankings.find((r) => r.participant_id === participantId)
+    const rank = participantRanking ? participantRanking.rank : null
+    const totalParticipants = rankings.length
+
+    return NextResponse.json({
+      results: validResults,
+      rank,
+      totalParticipants,
+      totalCorrect: participantRanking ? participantRanking.correct_answers : 0,
+    })
   } catch (error) {
     console.error("Error fetching results:", error)
     return NextResponse.json({ error: "Failed to fetch results" }, { status: 500 })

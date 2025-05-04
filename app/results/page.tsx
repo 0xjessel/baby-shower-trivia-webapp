@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation"
 import { usePusher } from "@/hooks/use-pusher"
 import { EVENTS } from "@/lib/pusher-client"
 import PlayerHeartbeat from "@/components/player-heartbeat"
+import confetti from "canvas-confetti"
+import { Trophy, Medal, Award } from "lucide-react"
 
 // Add this export to disable static generation for this page
 export const dynamic = "force-dynamic"
@@ -25,6 +27,8 @@ export default function ResultsPage() {
   const [score, setScore] = useState({ correct: 0, total: 0 })
   const [isLoading, setIsLoading] = useState(true)
   const [isWaiting, setIsWaiting] = useState(false)
+  const [rank, setRank] = useState<number | null>(null)
+  const [totalParticipants, setTotalParticipants] = useState(0)
   const router = useRouter()
   const { gameChannel, isLoading: isPusherLoading } = usePusher()
 
@@ -64,6 +68,50 @@ export default function ResultsPage() {
     }
   }, [gameChannel, router])
 
+  // Celebration effect for top 3 players
+  useEffect(() => {
+    if (rank === 1) {
+      // Gold celebration for 1st place
+      const duration = 5 * 1000
+      const animationEnd = Date.now() + duration
+      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 }
+
+      const interval = setInterval(() => {
+        const timeLeft = animationEnd - Date.now()
+
+        if (timeLeft <= 0) {
+          return clearInterval(interval)
+        }
+
+        const particleCount = 50 * (timeLeft / duration)
+
+        // Gold confetti
+        confetti({
+          ...defaults,
+          particleCount,
+          origin: { x: Math.random(), y: Math.random() * 0.5 },
+          colors: ["#FFD700", "#FFC800", "#FFDF00"],
+        })
+      }, 250)
+    } else if (rank === 2) {
+      // Silver celebration for 2nd place
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ["#C0C0C0", "#D3D3D3", "#A9A9A9"],
+      })
+    } else if (rank === 3) {
+      // Bronze celebration for 3rd place
+      confetti({
+        particleCount: 50,
+        spread: 50,
+        origin: { y: 0.7 },
+        colors: ["#CD7F32", "#B87333", "#D2691E"],
+      })
+    }
+  }, [rank])
+
   const fetchResults = async () => {
     try {
       const res = await fetch("/api/results")
@@ -83,12 +131,47 @@ export default function ResultsPage() {
           correct: data.results.filter((r: ResultItem) => r.isCorrect).length,
           total: data.results.length,
         })
+        setRank(data.rank)
+        setTotalParticipants(data.totalParticipants)
         setIsWaiting(false)
         setIsLoading(false)
       }
     } catch (err) {
       console.error("Error fetching results:", err)
       setIsLoading(false)
+    }
+  }
+
+  const getRankDisplay = () => {
+    if (!rank) return null
+
+    if (rank === 1) {
+      return (
+        <div className="flex items-center justify-center gap-2 text-yellow-400 animate-pulse">
+          <Trophy className="h-8 w-8" />
+          <span className="text-2xl font-bold">1st Place!</span>
+        </div>
+      )
+    } else if (rank === 2) {
+      return (
+        <div className="flex items-center justify-center gap-2 text-gray-300">
+          <Medal className="h-7 w-7" />
+          <span className="text-xl font-bold">2nd Place</span>
+        </div>
+      )
+    } else if (rank === 3) {
+      return (
+        <div className="flex items-center justify-center gap-2 text-amber-700">
+          <Award className="h-6 w-6" />
+          <span className="text-lg font-bold">3rd Place</span>
+        </div>
+      )
+    } else {
+      return (
+        <div className="text-arcane-gray">
+          Rank: {rank} of {totalParticipants}
+        </div>
+      )
     }
   }
 
@@ -121,13 +204,15 @@ export default function ResultsPage() {
       {/* Include the heartbeat component */}
       <PlayerHeartbeat />
 
-      {/* Rest of the JSX remains the same... */}
       <div className="mx-auto max-w-md">
         <div className="mb-6 text-center">
           <h1 className="text-3xl font-bold text-arcane-blue">Your Results</h1>
           <p className="mt-2 text-lg text-arcane-gray">
             You got {score.correct} out of {score.total} correct!
           </p>
+
+          {/* Display rank with animation for top 3 */}
+          <div className="mt-4 mb-6">{getRankDisplay()}</div>
         </div>
 
         <div className="space-y-4">

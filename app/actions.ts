@@ -806,6 +806,25 @@ export async function resetGame() {
       // Continue even if custom answer deletion fails
     }
 
+    // Delete all participants
+    const { data: allParticipants, error: participantsError } = await supabaseAdmin.from("participants").select("id")
+
+    if (participantsError) {
+      console.error("Error fetching participants:", participantsError)
+    } else if (allParticipants && allParticipants.length > 0) {
+      console.log(`Deleting ${allParticipants.length} participants...`)
+
+      // Delete participants one by one to avoid UUID syntax issues
+      for (const participant of allParticipants) {
+        const { error: deleteError } = await supabaseAdmin.from("participants").delete().eq("id", participant.id)
+
+        if (deleteError) {
+          console.error(`Error deleting participant ${participant.id}:`, deleteError)
+          // Continue with other deletions even if one fails
+        }
+      }
+    }
+
     // Trigger Pusher event to notify all clients
     try {
       await pusherServer.trigger(GAME_CHANNEL, EVENTS.GAME_RESET, {})
@@ -1022,6 +1041,7 @@ export async function uploadQuestion(formData: FormData) {
     // Get options
     const options: string[] = []
     let correctAnswerIndex = Number.parseInt(formData.get("correctAnswerIndex") as string) || 0
+    const noCorrectAnswer = formData.get("no_correct_answer") === "true"
 
     for (let i = 0; i < 10; i++) {
       const option = formData.get(`option_${i}`)
@@ -1098,7 +1118,7 @@ export async function uploadQuestion(formData: FormData) {
       question: questionText,
       image_url: imageUrl,
       options: options,
-      correct_answer: options[correctAnswerIndex],
+      correct_answer: noCorrectAnswer ? null : options[correctAnswerIndex],
       allows_custom_answers: allowsCustomAnswers,
       game_id: gameId, // Associate with the selected game
     })
