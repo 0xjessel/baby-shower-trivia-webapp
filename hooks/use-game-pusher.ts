@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { usePusher } from "@/hooks/use-pusher"
 import { EVENTS } from "@/lib/pusher-client"
@@ -56,9 +56,15 @@ export function useGamePusher(props: GamePusherProps) {
   const router = useRouter()
   const { gameChannel } = usePusher()
 
+  // Use a ref to track if we've already set up the listeners
+  const listenersSetupRef = useRef(false)
+
   // Set up Pusher event listeners
   useEffect(() => {
-    if (!gameChannel) return
+    if (!gameChannel || listenersSetupRef.current) return
+
+    // Mark that we've set up the listeners
+    listenersSetupRef.current = true
 
     console.log("Setting up Pusher event listeners")
 
@@ -183,21 +189,22 @@ export function useGamePusher(props: GamePusherProps) {
 
     return () => {
       console.log("Cleaning up Pusher event listeners")
-      gameChannel.unbind(EVENTS.QUESTION_UPDATE)
-      gameChannel.unbind(EVENTS.VOTE_UPDATE)
-      gameChannel.unbind(EVENTS.CUSTOM_ANSWER_ADDED)
-      gameChannel.unbind(EVENTS.SHOW_RESULTS)
-      gameChannel.unbind(EVENTS.GAME_RESET)
+      if (gameChannel) {
+        gameChannel.unbind(EVENTS.QUESTION_UPDATE)
+        gameChannel.unbind(EVENTS.VOTE_UPDATE)
+        gameChannel.unbind(EVENTS.CUSTOM_ANSWER_ADDED)
+        gameChannel.unbind(EVENTS.SHOW_RESULTS)
+        gameChannel.unbind(EVENTS.GAME_RESET)
+      }
+      listenersSetupRef.current = false
     }
   }, [
     gameChannel,
     router,
+    // Remove dependencies that change frequently
+    // Keep only the stable references and functions
     currentQuestionRef,
     lastVoteUpdateId,
-    submittedAnswer,
-    selectedAnswer,
-    hasAddedCustomAnswer,
-    customAnswers,
     setCurrentQuestion,
     setSelectedAnswer,
     setSubmittedAnswer,
@@ -212,6 +219,12 @@ export function useGamePusher(props: GamePusherProps) {
     fetchCurrentQuestion,
     fetchVoteCounts,
   ])
+
+  // Add a separate effect to handle updates to these values without re-initializing Pusher
+  useEffect(() => {
+    // This effect doesn't need to do anything, it's just here to handle
+    // updates to these values without triggering the main Pusher setup effect
+  }, [submittedAnswer, selectedAnswer, hasAddedCustomAnswer, customAnswers])
 
   return { gameChannel }
 }

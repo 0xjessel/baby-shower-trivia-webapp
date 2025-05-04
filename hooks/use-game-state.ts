@@ -26,8 +26,6 @@ export function useGameState() {
   const [isSubmittingCustom, setIsSubmittingCustom] = useState(false)
   const [hasAddedCustomAnswer, setHasAddedCustomAnswer] = useState(false)
 
-  // Remove isLoading and bypassLoading states
-
   const playerNameRef = useRef<string>("")
   const router = useRouter()
 
@@ -37,7 +35,7 @@ export function useGameState() {
   // Track the current question ID for cleanup
   const currentQuestionRef = useRef<string | null>(null)
 
-  // Fetch current question
+  // Fetch current question - use useCallback to ensure the function reference is stable
   const fetchCurrentQuestion = useCallback(async () => {
     try {
       console.log("Fetching current question...")
@@ -125,7 +123,23 @@ export function useGameState() {
     } catch (err) {
       console.error("Error fetching current question:", err)
     }
-  }, [currentQuestion, customAnswers])
+  }, []) // Empty dependency array to ensure stable reference
+
+  // Use a ref to store the current state values that the callback needs
+  const stateRef = useRef({
+    currentQuestion,
+    customAnswers,
+    timeIsUp,
+  })
+
+  // Update the ref whenever these values change
+  useEffect(() => {
+    stateRef.current = {
+      currentQuestion,
+      customAnswers,
+      timeIsUp,
+    }
+  }, [currentQuestion, customAnswers, timeIsUp])
 
   // Fetch vote counts for the current question
   const fetchVoteCounts = useCallback(async (questionId: string) => {
@@ -163,84 +177,91 @@ export function useGameState() {
     } catch (err) {
       console.error("Error fetching vote counts:", err)
     }
-  }, [])
+  }, []) // Empty dependency array to ensure stable reference
 
   // Handle answer selection
-  const handleAnswerChange = async (value: string) => {
-    if (!currentQuestion || timeIsUp) return
+  const handleAnswerChange = useCallback(
+    async (value: string) => {
+      const { currentQuestion, timeIsUp } = stateRef.current
 
-    // If the user clicks on the same option they've already selected, do nothing
-    if (value === selectedAnswer) return
+      if (!currentQuestion || timeIsUp) return
 
-    console.log("Answer changed from", selectedAnswer, "to", value)
+      // If the user clicks on the same option they've already selected, do nothing
+      if (value === selectedAnswer) return
 
-    // Update local state immediately for responsive UI
-    setSelectedAnswer(value)
+      console.log("Answer changed from", selectedAnswer, "to", value)
 
-    // Update vote counts optimistically
-    setVoteCounts((prev) => {
-      const newCounts = { ...prev }
+      // Update local state immediately for responsive UI
+      setSelectedAnswer(value)
 
-      // If changing from a previously selected answer, decrement that count
-      if (selectedAnswer && selectedAnswer !== value) {
-        newCounts[selectedAnswer] = Math.max(0, (prev[selectedAnswer] || 0) - 1)
-      }
+      // Update vote counts optimistically
+      setVoteCounts((prev) => {
+        const newCounts = { ...prev }
 
-      // Increment the count for the newly selected answer
-      newCounts[value] = (prev[value] || 0) + 1
-
-      return newCounts
-    })
-
-    // Update total votes if this is a new selection
-    if (!selectedAnswer) {
-      setTotalVotes((prev) => prev + 1)
-    }
-
-    // Submit the answer to the server
-    if (!hasSubmitted) {
-      setIsSubmittingAnswer(true)
-      setHasSubmitted(true)
-      setSubmittedAnswer(value)
-
-      try {
-        const result = await submitAnswer(currentQuestion.id, value)
-
-        if (result.success) {
-          console.log("Answer submitted successfully")
-        } else {
-          console.error("Error submitting answer:", result.error)
-          // Don't revert UI state as the user has already seen their selection
+        // If changing from a previously selected answer, decrement that count
+        if (selectedAnswer && selectedAnswer !== value) {
+          newCounts[selectedAnswer] = Math.max(0, (prev[selectedAnswer] || 0) - 1)
         }
-      } catch (error) {
-        console.error("Error submitting answer:", error)
-      } finally {
-        setIsSubmittingAnswer(false)
+
+        // Increment the count for the newly selected answer
+        newCounts[value] = (prev[value] || 0) + 1
+
+        return newCounts
+      })
+
+      // Update total votes if this is a new selection
+      if (!selectedAnswer) {
+        setTotalVotes((prev) => prev + 1)
       }
-    } else if (submittedAnswer !== value) {
-      // This is the case where the user is changing their answer after already submitting
-      console.log("Changing previously submitted answer from", submittedAnswer, "to", value)
-      setIsSubmittingAnswer(true)
-      setSubmittedAnswer(value)
 
-      try {
-        const result = await submitAnswer(currentQuestion.id, value)
+      // Submit the answer to the server
+      if (!hasSubmitted) {
+        setIsSubmittingAnswer(true)
+        setHasSubmitted(true)
+        setSubmittedAnswer(value)
 
-        if (result.success) {
-          console.log("Answer changed successfully")
-        } else {
-          console.error("Error changing answer:", result.error)
+        try {
+          const result = await submitAnswer(currentQuestion.id, value)
+
+          if (result.success) {
+            console.log("Answer submitted successfully")
+          } else {
+            console.error("Error submitting answer:", result.error)
+            // Don't revert UI state as the user has already seen their selection
+          }
+        } catch (error) {
+          console.error("Error submitting answer:", error)
+        } finally {
+          setIsSubmittingAnswer(false)
         }
-      } catch (error) {
-        console.error("Error changing answer:", error)
-      } finally {
-        setIsSubmittingAnswer(false)
+      } else if (submittedAnswer !== value) {
+        // This is the case where the user is changing their answer after already submitting
+        console.log("Changing previously submitted answer from", submittedAnswer, "to", value)
+        setIsSubmittingAnswer(true)
+        setSubmittedAnswer(value)
+
+        try {
+          const result = await submitAnswer(currentQuestion.id, value)
+
+          if (result.success) {
+            console.log("Answer changed successfully")
+          } else {
+            console.error("Error changing answer:", result.error)
+          }
+        } catch (error) {
+          console.error("Error changing answer:", error)
+        } finally {
+          setIsSubmittingAnswer(false)
+        }
       }
-    }
-  }
+    },
+    [selectedAnswer, submittedAnswer, hasSubmitted],
+  )
 
   // Handle timer expiration
-  const handleTimeUp = () => {
+  const handleTimeUp = useCallback(() => {
+    const { currentQuestion } = stateRef.current
+
     setTimeIsUp(true)
 
     // If the user has selected an answer but didn't submit it, auto-submit
@@ -254,102 +275,110 @@ export function useGameState() {
         })
       }
     }
-  }
+  }, [selectedAnswer, hasSubmitted])
 
   // Handle custom answer submission
-  const handleAddCustomAnswer = async (e?: React.FormEvent) => {
-    // If an event was passed, prevent default behavior
-    if (e) {
-      e.preventDefault()
-      e.stopPropagation()
-    }
+  const handleAddCustomAnswer = useCallback(
+    async (e?: React.FormEvent) => {
+      const { currentQuestion, timeIsUp } = stateRef.current
 
-    if (!newCustomAnswer.trim() || !currentQuestion || timeIsUp) return
+      // If an event was passed, prevent default behavior
+      if (e) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
 
-    console.log("[DEBUG] handleAddCustomAnswer - Starting custom answer submission")
-    console.log("[DEBUG] Current question:", currentQuestion.id)
-    console.log("[DEBUG] New custom answer:", newCustomAnswer.trim())
+      if (!newCustomAnswer.trim() || !currentQuestion || timeIsUp) return
 
-    setIsSubmittingCustom(true)
+      console.log("[DEBUG] handleAddCustomAnswer - Starting custom answer submission")
+      console.log("[DEBUG] Current question:", currentQuestion.id)
+      console.log("[DEBUG] New custom answer:", newCustomAnswer.trim())
 
-    // Set this flag early to prevent duplicate processing
-    setHasAddedCustomAnswer(true)
+      setIsSubmittingCustom(true)
 
-    try {
-      console.log("[DEBUG] Calling addCustomAnswer server action")
-      const result = await addCustomAnswer(currentQuestion.id, newCustomAnswer.trim())
-      console.log("[DEBUG] Server action result:", result)
+      // Set this flag early to prevent duplicate processing
+      setHasAddedCustomAnswer(true)
 
-      if (result.success && result.customAnswer) {
-        console.log("[DEBUG] Custom answer added successfully:", result.customAnswer)
-        setNewCustomAnswer("")
+      try {
+        console.log("[DEBUG] Calling addCustomAnswer server action")
+        const result = await addCustomAnswer(currentQuestion.id, newCustomAnswer.trim())
+        console.log("[DEBUG] Server action result:", result)
 
-        // Add the custom answer to the local state immediately
-        const newCustomAnswerObj = result.customAnswer
-        setCustomAnswers((prev) => [...prev, newCustomAnswerObj])
+        if (result.success && result.customAnswer) {
+          console.log("[DEBUG] Custom answer added successfully:", result.customAnswer)
+          setNewCustomAnswer("")
 
-        // Set the newly added answer as the selected answer
-        setSelectedAnswer(newCustomAnswerObj.text)
+          // Add the custom answer to the local state immediately
+          const newCustomAnswerObj = result.customAnswer
+          setCustomAnswers((prev) => [...prev, newCustomAnswerObj])
 
-        // Update vote counts optimistically
-        setVoteCounts((prev) => ({
-          ...prev,
-          [newCustomAnswerObj.text]: 1,
-        }))
+          // Set the newly added answer as the selected answer
+          setSelectedAnswer(newCustomAnswerObj.text)
 
-        // Update total votes
-        setTotalVotes((prev) => prev + 1)
+          // Update vote counts optimistically
+          setVoteCounts((prev) => ({
+            ...prev,
+            [newCustomAnswerObj.text]: 1,
+          }))
 
-        // Mark as submitted
-        setSubmittedAnswer(newCustomAnswerObj.text)
-        setHasSubmitted(true)
+          // Update total votes
+          setTotalVotes((prev) => prev + 1)
 
-        // Set this flag to true to indicate the user has added a custom answer
-        setHasAddedCustomAnswer(true)
+          // Mark as submitted
+          setSubmittedAnswer(newCustomAnswerObj.text)
+          setHasSubmitted(true)
 
-        toast({
-          title: "Custom answer added!",
-          description: "Your answer has been submitted.",
-        })
-      } else {
-        console.log("[DEBUG] Failed to add custom answer:", result.error)
-        // Reset the flag if the submission failed
+          // Set this flag to true to indicate the user has added a custom answer
+          setHasAddedCustomAnswer(true)
+
+          toast({
+            title: "Custom answer added!",
+            description: "Your answer has been submitted.",
+          })
+        } else {
+          console.log("[DEBUG] Failed to add custom answer:", result.error)
+          // Reset the flag if the submission failed
+          setHasAddedCustomAnswer(false)
+          toast({
+            title: "Error",
+            description: result.error || "Failed to add custom answer.",
+            variant: "destructive",
+          })
+        }
+      } catch (error) {
+        console.error("[DEBUG] Exception in handleAddCustomAnswer:", error)
+        // Reset the flag if there was an error
         setHasAddedCustomAnswer(false)
         toast({
           title: "Error",
-          description: result.error || "Failed to add custom answer.",
+          description: "Failed to add custom answer. Please try again.",
           variant: "destructive",
         })
+      } finally {
+        setIsSubmittingCustom(false)
+        console.log("[DEBUG] handleAddCustomAnswer completed")
       }
-    } catch (error) {
-      console.error("[DEBUG] Exception in handleAddCustomAnswer:", error)
-      // Reset the flag if there was an error
-      setHasAddedCustomAnswer(false)
-      toast({
-        title: "Error",
-        description: "Failed to add custom answer. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsSubmittingCustom(false)
-      console.log("[DEBUG] handleAddCustomAnswer completed")
-    }
 
-    return false
-  }
+      return false
+    },
+    [newCustomAnswer],
+  )
 
   // Handle key press in custom answer input
-  const handleCustomAnswerKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    console.log("[DEBUG] Key pressed in custom answer input:", e.key)
-    if (e.key === "Enter") {
-      console.log("[DEBUG] Enter key pressed, preventing default")
-      e.preventDefault()
-      if (newCustomAnswer.trim() && !isSubmittingCustom && !timeIsUp) {
-        console.log("[DEBUG] Calling handleAddCustomAnswer from Enter key press")
-        handleAddCustomAnswer()
+  const handleCustomAnswerKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      console.log("[DEBUG] Key pressed in custom answer input:", e.key)
+      if (e.key === "Enter") {
+        console.log("[DEBUG] Enter key pressed, preventing default")
+        e.preventDefault()
+        if (newCustomAnswer.trim() && !isSubmittingCustom && !stateRef.current.timeIsUp) {
+          console.log("[DEBUG] Calling handleAddCustomAnswer from Enter key press")
+          handleAddCustomAnswer()
+        }
       }
-    }
-  }
+    },
+    [newCustomAnswer, isSubmittingCustom, handleAddCustomAnswer],
+  )
 
   // Initial setup - fetch question and set up authentication
   useEffect(() => {
