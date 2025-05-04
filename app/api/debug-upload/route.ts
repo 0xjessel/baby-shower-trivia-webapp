@@ -85,9 +85,9 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       fileName,
-      path: uploadData?.path,
-      signedUrl: urlData?.signedUrl || null,
-      signedUrlError: urlError ? urlError.message : null,
+      path: uploadData?.path || "",
+      signedUrl: urlData?.signedUrl || "",
+      signedUrlError: urlError ? urlError.message : "",
     })
   } catch (error) {
     console.error("[DEBUG-UPLOAD] Unexpected error:", error)

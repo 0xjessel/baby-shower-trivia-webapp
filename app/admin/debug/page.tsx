@@ -61,7 +61,15 @@ export default function DebugPage() {
       })
 
       const result = await response.json()
-      setTestUploadResult(JSON.stringify(result, null, 2))
+      // Defensive: handle possible null/empty signedUrl and other fields
+      setTestUploadResult(
+        JSON.stringify({
+          ...result,
+          signedUrl: result.signedUrl ? result.signedUrl.toString() : "",
+          path: result.path ? result.path.toString() : "",
+          signedUrlError: result.signedUrlError ? result.signedUrlError.toString() : ""
+        }, null, 2)
+      )
     } catch (err) {
       setTestUploadResult(`Error testing upload: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
