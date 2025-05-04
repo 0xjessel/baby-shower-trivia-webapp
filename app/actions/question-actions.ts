@@ -28,6 +28,23 @@ export async function uploadQuestion(formData: FormData) {
     const isOpinionQuestion = formData.get("isOpinionQuestion") === "true"
     const image = formData.get("image") as File
 
+    // Debug log for all received form data
+    console.log("[DEBUG] Received formData in uploadQuestion:", {
+      question,
+      type,
+      options,
+      correctAnswer,
+      noCorrectAnswer,
+      allowsCustomAnswers,
+      isOpinionQuestion,
+      image,
+      imageType: image?.type,
+      imageSize: image?.size,
+      imageName: image?.name,
+      imageInstanceOfFile: image instanceof File,
+      typeofImage: typeof image
+    })
+
     // Validate inputs
     if (!question || !type || !options || options.length < 2) {
       return { success: false, error: "Invalid input data" }
