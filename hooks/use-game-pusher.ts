@@ -8,9 +8,9 @@ import { usePusher } from "@/hooks/use-pusher"
 import { EVENTS } from "@/lib/pusher-client"
 import type { Question, CustomAnswer, VoteCounts } from "@/types/game"
 
-interface UseGamePusherProps {
-  currentQuestionRef: React.MutableRefObject<string | null>
-  lastVoteUpdateId: React.MutableRefObject<string | null>
+interface GamePusherProps {
+  currentQuestionRef: React.RefObject<string | null>
+  lastVoteUpdateId: React.RefObject<string | null>
   submittedAnswer: string
   selectedAnswer: string
   hasAddedCustomAnswer: boolean
@@ -18,44 +18,45 @@ interface UseGamePusherProps {
   setCurrentQuestion: (question: Question | null) => void
   setSelectedAnswer: (answer: string) => void
   setSubmittedAnswer: (answer: string) => void
-  setHasSubmitted: (submitted: boolean) => void
-  setIsWaiting: (waiting: boolean) => void
-  setTimerActive: (active: boolean) => void
-  setTimeIsUp: (timeIsUp: boolean) => void
+  setHasSubmitted: (hasSubmitted: boolean) => void
+  setIsWaiting: (isWaiting: boolean) => void
+  setTimerActive: (isActive: boolean) => void
+  setTimeIsUp: (isTimeUp: boolean) => void
   setVoteCounts: (voteCounts: VoteCounts | ((prev: VoteCounts) => VoteCounts)) => void
   setTotalVotes: (totalVotes: number | ((prev: number) => number)) => void
   setCustomAnswers: (customAnswers: CustomAnswer[] | ((prev: CustomAnswer[]) => CustomAnswer[])) => void
   setHasAddedCustomAnswer: (hasAdded: boolean) => void
-  setBypassLoading: (bypass: boolean) => void
-  fetchCurrentQuestion: (skipLoadingState?: boolean) => Promise<void>
+  fetchCurrentQuestion: () => Promise<void>
   fetchVoteCounts: (questionId: string) => Promise<void>
 }
 
-export function useGamePusher({
-  currentQuestionRef,
-  lastVoteUpdateId,
-  submittedAnswer,
-  selectedAnswer,
-  hasAddedCustomAnswer,
-  customAnswers,
-  setCurrentQuestion,
-  setSelectedAnswer,
-  setSubmittedAnswer,
-  setHasSubmitted,
-  setIsWaiting,
-  setTimerActive,
-  setTimeIsUp,
-  setVoteCounts,
-  setTotalVotes,
-  setCustomAnswers,
-  setHasAddedCustomAnswer,
-  setBypassLoading,
-  fetchCurrentQuestion,
-  fetchVoteCounts,
-}: UseGamePusherProps) {
+export function useGamePusher(props: GamePusherProps) {
+  const {
+    currentQuestionRef,
+    lastVoteUpdateId,
+    submittedAnswer,
+    selectedAnswer,
+    hasAddedCustomAnswer,
+    customAnswers,
+    setCurrentQuestion,
+    setSelectedAnswer,
+    setSubmittedAnswer,
+    setHasSubmitted,
+    setIsWaiting,
+    setTimerActive,
+    setTimeIsUp,
+    setVoteCounts,
+    setTotalVotes,
+    setCustomAnswers,
+    setHasAddedCustomAnswer,
+    fetchCurrentQuestion,
+    fetchVoteCounts,
+  } = props
+
   const router = useRouter()
   const { gameChannel } = usePusher()
 
+  // Set up Pusher event listeners
   useEffect(() => {
     if (!gameChannel) return
 
@@ -139,9 +140,6 @@ export function useGamePusher({
           // Also check if this is our own custom answer (by checking if we've already added a custom answer)
           // This prevents duplicate answers when receiving our own Pusher event
           if (!exists && !hasAddedCustomAnswer) {
-            // Enable bypass loading during this operation
-            setBypassLoading(true)
-
             // Add the new custom answer to the list
             setCustomAnswers((prev) => [...prev, data.customAnswer])
 
@@ -151,14 +149,9 @@ export function useGamePusher({
               [data.customAnswer.text]: 0,
             }))
 
-            // Fetch updated vote counts without triggering loading state
+            // Fetch updated vote counts
             console.log("[DEBUG] Fetching updated vote counts")
             fetchVoteCounts(data.questionId)
-
-            // Disable bypass loading after a short delay to ensure all operations are complete
-            setTimeout(() => {
-              setBypassLoading(false)
-            }, 500)
           }
         }
       },
@@ -199,14 +192,12 @@ export function useGamePusher({
   }, [
     gameChannel,
     router,
-    fetchCurrentQuestion,
-    fetchVoteCounts,
-    customAnswers,
     currentQuestionRef,
     lastVoteUpdateId,
     submittedAnswer,
     selectedAnswer,
     hasAddedCustomAnswer,
+    customAnswers,
     setCurrentQuestion,
     setSelectedAnswer,
     setSubmittedAnswer,
@@ -218,6 +209,9 @@ export function useGamePusher({
     setTotalVotes,
     setCustomAnswers,
     setHasAddedCustomAnswer,
-    setBypassLoading,
+    fetchCurrentQuestion,
+    fetchVoteCounts,
   ])
+
+  return { gameChannel }
 }

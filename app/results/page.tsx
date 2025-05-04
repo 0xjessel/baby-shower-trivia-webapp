@@ -41,6 +41,11 @@ export default function ResultsPage() {
   const [confettiLoaded, setConfettiLoaded] = useState(false)
   const [imageLoaded, setImageLoaded] = useState(false)
 
+  const getResultImage = () => {
+    const scorePercentage = score.total > 0 ? (score.correct / score.total) * 100 : 0
+    return scorePercentage > 50 ? "/images/victory-screen.png" : "/images/defeat-screen.png"
+  }
+
   useEffect(() => {
     // Ensure this code only runs in the browser
     if (typeof window === "undefined") return
@@ -263,20 +268,22 @@ export default function ResultsPage() {
       <PlayerHeartbeat />
 
       <div className="mx-auto max-w-md">
-        {/* Victory image with animations */}
+        {/* Victory or defeat image with animations */}
         <div className="mb-6 flex justify-center">
           <img
-            src="/images/victory-screen.png"
-            alt="Victory!"
-            className={`w-full max-w-[350px] h-auto rounded-lg animate-bounce-slow ${
-              imageLoaded ? "opacity-100" : "opacity-0"
-            } transition-opacity duration-1000`}
+            src={getResultImage() || "/placeholder.svg"}
+            alt={score.correct / score.total > 0.5 ? "Victory!" : "Defeat!"}
+            className={`w-full max-w-[350px] h-auto rounded-lg ${
+              score.correct / score.total > 0.5 ? "animate-bounce-slow" : "animate-pulse"
+            } ${imageLoaded ? "opacity-100" : "opacity-0"} transition-opacity duration-1000`}
             onLoad={() => setImageLoaded(true)}
           />
         </div>
 
         <div className="mb-6 text-center">
-          <h1 className="text-3xl font-bold text-arcane-blue">Your Results</h1>
+          <h1 className="text-3xl font-bold text-arcane-blue">
+            {score.correct / score.total > 0.5 ? "Your Results" : "Better Luck Next Time"}
+          </h1>
           <p className="mt-2 text-lg text-arcane-gray">
             You got {score.correct} out of {score.total} correct!
           </p>

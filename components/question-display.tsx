@@ -27,6 +27,7 @@ interface QuestionDisplayProps {
   // Custom answer props
   newCustomAnswer: string
   isSubmittingCustom: boolean
+  hasAddedCustomAnswer: boolean
   onCustomAnswerChange: (e: React.ChangeEvent<HTMLInputElement>) => void
   onCustomAnswerKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void
   onAddCustomAnswer: (e: React.MouseEvent) => void
@@ -49,6 +50,7 @@ export default function QuestionDisplay({
   // Custom answer props
   newCustomAnswer,
   isSubmittingCustom,
+  hasAddedCustomAnswer,
   onCustomAnswerChange,
   onCustomAnswerKeyDown,
   onAddCustomAnswer,
@@ -56,6 +58,9 @@ export default function QuestionDisplay({
   // Keep predefined options and custom answers separate
   const allOptions = question.options
   const customAnswerOptions = customAnswers.map((ca) => ca.text)
+
+  // Check if the current user has added a custom answer for this question
+  const userAddedCustomAnswer = hasAddedCustomAnswer
 
   return (
     <Card className="w-full max-w-md border-2 border-arcane-blue/50 bg-arcane-navy/80 shadow-md">
@@ -156,8 +161,8 @@ export default function QuestionDisplay({
             })}
           </RadioGroup>
 
-          {/* Custom answer input - placed after all options */}
-          {question.allowsCustomAnswers && (
+          {/* Custom answer input - only show if the user hasn't added a custom answer yet */}
+          {question.allowsCustomAnswers && !userAddedCustomAnswer && (
             <CustomAnswerInput
               newCustomAnswer={newCustomAnswer}
               isSubmittingCustom={isSubmittingCustom}
