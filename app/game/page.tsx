@@ -45,7 +45,7 @@ export default function GamePage() {
   const [submittedAnswer, setSubmittedAnswer] = useState<string>("")
   const [hasSubmitted, setHasSubmitted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [isWaiting, setIsWaiting] = useState(true)
+  const [isWaiting, setIsWaiting] = useState(isWaiting)
   const [timerActive, setTimerActive] = useState(false)
   const [timerReset, setTimerReset] = useState(0)
   const [timeIsUp, setTimeIsUp] = useState(false)
@@ -69,97 +69,102 @@ export default function GamePage() {
   const [hasAddedCustomAnswer, setHasAddedCustomAnswer] = useState(false)
 
   // Fetch current question
-  const fetchCurrentQuestion = useCallback(async () => {
-    try {
-      setIsLoading(true)
-      console.log("Fetching current question...")
+  const fetchCurrentQuestion = useCallback(
+    async (skipLoadingState = false) => {
+      try {
+        if (!skipLoadingState) {
+          setIsLoading(true)
+        }
+        console.log("Fetching current question...")
 
-      const res = await fetch("/api/current-question", {
-        headers: {
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          Pragma: "no-cache",
-          Expires: "0",
-        },
-      })
+        const res = await fetch("/api/current-question", {
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        })
 
-      if (!res.ok) {
-        throw new Error(`API returned ${res.status}`)
-      }
+        if (!res.ok) {
+          throw new Error(`API returned ${res.status}`)
+        }
 
-      const data = await res.json()
-      console.log("Current question API response:", data) // Add this debug line
+        const data = await res.json()
+        console.log("Current question API response:", data) // Add this debug line
 
-      if (data.waiting) {
-        console.log("Waiting for game to start, status:", data.gameStatus)
-        setIsWaiting(true)
-        setCurrentQuestion(null)
-        setTimerActive(false)
-        currentQuestionRef.current = null
-      } else if (data.question) {
-        // Check if this is a new question
-        const isNewQuestion = !currentQuestion || currentQuestion.id !== data.question.id
+        if (data.waiting) {
+          console.log("Waiting for game to start, status:", data.gameStatus)
+          setIsWaiting(true)
+          setCurrentQuestion(null)
+          setTimerActive(false)
+          currentQuestionRef.current = null
+        } else if (data.question) {
+          // Check if this is a new question
+          const isNewQuestion = !currentQuestion || currentQuestion.id !== data.question.id
 
-        if (isNewQuestion) {
-          console.log("New question received:", data.question.id)
-          setCurrentQuestion(data.question)
-          setIsWaiting(false)
-          setTimeIsUp(false)
-          setTimerReset((prev) => prev + 1)
-          setTimerActive(true)
-          // Still store custom answers in the background for vote counting
-          setCustomAnswers(data.customAnswers || [])
-          currentQuestionRef.current = data.question.id
-          setHasAddedCustomAnswer(false) // Reset for new question
+          if (isNewQuestion) {
+            console.log("New question received:", data.question.id)
+            setCurrentQuestion(data.question)
+            setIsWaiting(false)
+            setTimeIsUp(false)
+            setTimerReset((prev) => prev + 1)
+            setTimerActive(true)
+            // Still store custom answers in the background for vote counting
+            setCustomAnswers(data.customAnswers || [])
+            currentQuestionRef.current = data.question.id
+            setHasAddedCustomAnswer(false) // Reset for new question
 
-          // Reset vote counts for new question
-          const initialVoteCounts: VoteCounts = {}
-          data.question.options.forEach((option: string) => {
-            initialVoteCounts[option] = 0
-          })
-
-          // Add initial vote counts for custom answers too
-          if (data.customAnswers) {
-            data.customAnswers.forEach((ca: CustomAnswer) => {
-              initialVoteCounts[ca.text] = 0
+            // Reset vote counts for new question
+            const initialVoteCounts: VoteCounts = {}
+            data.question.options.forEach((option: string) => {
+              initialVoteCounts[option] = 0
             })
-          }
 
-          setVoteCounts(initialVoteCounts)
-          setTotalVotes(0)
+            // Add initial vote counts for custom answers too
+            if (data.customAnswers) {
+              data.customAnswers.forEach((ca: CustomAnswer) => {
+                initialVoteCounts[ca.text] = 0
+              })
+            }
 
-          // If the user has already answered this question
-          if (data.answered && data.selectedAnswer) {
-            console.log("User already answered:", data.selectedAnswer)
-            setSelectedAnswer(data.selectedAnswer)
-            setSubmittedAnswer(data.selectedAnswer)
-            setHasSubmitted(true)
-          } else {
-            setSelectedAnswer("")
-            setSubmittedAnswer("")
-            setHasSubmitted(false)
-          }
+            setVoteCounts(initialVoteCounts)
+            setTotalVotes(0)
 
-          // Fetch initial vote counts
-          fetchVoteCounts(data.question.id)
-        } else {
-          // Same question, just check if the game state has changed
-          if (data.gameStatus === "results" && !timeIsUp) {
-            console.log("Game state changed to results")
-            setTimeIsUp(true)
-          }
+            // If the user has already answered this question
+            if (data.answered && data.selectedAnswer) {
+              console.log("User already answered:", data.selectedAnswer)
+              setSelectedAnswer(data.selectedAnswer)
+              setSubmittedAnswer(data.selectedAnswer)
+              setHasSubmitted(true)
+            } else {
+              setSelectedAnswer("")
+              setSubmittedAnswer("")
+              setHasSubmitted(false)
+            }
 
-          // Update custom answers if needed
-          if (data.customAnswers && data.customAnswers.length !== customAnswers.length) {
+            // Fetch initial vote counts
             fetchVoteCounts(data.question.id)
+          } else {
+            // Same question, just check if the game state has changed
+            if (data.gameStatus === "results" && !timeIsUp) {
+              console.log("Game state changed to results")
+              setTimeIsUp(true)
+            }
+
+            // Update custom answers if needed
+            if (data.customAnswers && data.customAnswers.length !== customAnswers.length) {
+              fetchVoteCounts(data.question.id)
+            }
           }
         }
+      } catch (err) {
+        console.error("Error fetching current question:", err)
+      } finally {
+        setIsLoading(false)
       }
-    } catch (err) {
-      console.error("Error fetching current question:", err)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [currentQuestion, customAnswers])
+    },
+    [currentQuestion, customAnswers],
+  )
 
   // Fetch vote counts for the current question
   const fetchVoteCounts = useCallback(async (questionId: string) => {
@@ -299,7 +304,9 @@ export default function GamePage() {
           // Check if we already have this custom answer
           const exists = customAnswers.some((ca) => ca.id === data.customAnswer.id)
 
-          if (!exists) {
+          // Also check if this is our own custom answer (by checking if we've already added a custom answer)
+          // This prevents duplicate answers when receiving our own Pusher event
+          if (!exists && !hasAddedCustomAnswer) {
             // Add the new custom answer to the list
             setCustomAnswers((prev) => [...prev, data.customAnswer])
 
@@ -309,7 +316,7 @@ export default function GamePage() {
               [data.customAnswer.text]: 0,
             }))
 
-            // Fetch updated vote counts
+            // Fetch updated vote counts without triggering loading state
             console.log("[DEBUG] Fetching updated vote counts")
             fetchVoteCounts(data.questionId)
           }
@@ -461,6 +468,9 @@ export default function GamePage() {
 
     setIsSubmittingCustom(true)
 
+    // Set this flag early to prevent duplicate processing
+    setHasAddedCustomAnswer(true)
+
     try {
       console.log("[DEBUG] Calling addCustomAnswer server action")
       const result = await addCustomAnswer(currentQuestion.id, newCustomAnswer.trim())
@@ -490,15 +500,14 @@ export default function GamePage() {
         setSubmittedAnswer(newCustomAnswerObj.text)
         setHasSubmitted(true)
 
-        // Set that the user has added a custom answer
-        setHasAddedCustomAnswer(true)
-
         toast({
           title: "Custom answer added!",
           description: "Your answer has been submitted.",
         })
       } else {
         console.log("[DEBUG] Failed to add custom answer:", result.error)
+        // Reset the flag if the submission failed
+        setHasAddedCustomAnswer(false)
         toast({
           title: "Error",
           description: result.error || "Failed to add custom answer.",
@@ -507,6 +516,8 @@ export default function GamePage() {
       }
     } catch (error) {
       console.error("[DEBUG] Exception in handleAddCustomAnswer:", error)
+      // Reset the flag if there was an error
+      setHasAddedCustomAnswer(false)
       toast({
         title: "Error",
         description: "Failed to add custom answer. Please try again.",
