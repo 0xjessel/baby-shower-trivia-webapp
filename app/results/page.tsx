@@ -16,9 +16,10 @@ interface ResultItem {
   questionId: string
   question: string
   imageUrl?: string
-  correctAnswer: string
+  correctAnswer: string | null
   yourAnswer: string
   isCorrect: boolean
+  isOpinionQuestion?: boolean
 }
 
 interface Winner {
@@ -317,10 +318,13 @@ export default function ResultsPage() {
                 )}
 
                 <div className="mt-2 space-y-1 text-sm">
-                  <p>
-                    <span className="font-medium text-arcane-gray">Correct answer:</span>{" "}
-                    <span className="text-green-500">{result.correctAnswer}</span>
-                  </p>
+                  {/* Only show correct answer if not an opinion question */}
+                  {result.isOpinionQuestion ? null : (
+                    <p>
+                      <span className="font-medium text-arcane-gray">Correct answer:</span>{" "}
+                      <span className="text-green-500">{result.correctAnswer}</span>
+                    </p>
+                  )}
                   <p>
                     <span className="font-medium text-arcane-gray">Your answer:</span>{" "}
                     <span className={result.isCorrect ? "text-green-500" : "text-red-500"}>{result.yourAnswer}</span>

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { nextQuestion, previousQuestion, showResults, resetGame, resetVotes, uploadQuestion } from "@/app/actions"
+import { nextQuestion, previousQuestion, showResults, resetGame, resetVotes, uploadQuestion, resetPlayers } from "@/app/actions"
 import { toast } from "@/hooks/use-toast"
 import QuestionForm from "@/components/question-form"
 import QuestionList from "@/components/question-list"
@@ -313,6 +313,7 @@ export default function AdminDashboardPage() {
           // Refresh questions to update vote counts
           await fetchQuestions()
           await fetchCurrentQuestion()
+          window.location.reload()
         } else {
           toast({
             title: "Error",
@@ -325,6 +326,39 @@ export default function AdminDashboardPage() {
         toast({
           title: "Error",
           description: "Failed to reset votes. Please try again.",
+          variant: "destructive",
+        })
+      } finally {
+        setIsActionInProgress(false)
+      }
+    }
+  }
+
+  const handleResetPlayers = async () => {
+    if (isActionInProgress) return
+
+    if (window.confirm("Are you sure you want to reset all players? This will remove all participants from the game.")) {
+      setIsActionInProgress(true)
+      try {
+        const result = await resetPlayers()
+        if (result.success) {
+          toast({
+            title: "Success",
+            description: "All players have been reset",
+          })
+          window.location.reload()
+        } else {
+          toast({
+            title: "Error",
+            description: result.error || "Failed to reset players",
+            variant: "destructive",
+          })
+        }
+      } catch (error) {
+        console.error("Failed to reset players:", error)
+        toast({
+          title: "Error",
+          description: "Failed to reset players. Please try again.",
           variant: "destructive",
         })
       } finally {
@@ -351,6 +385,7 @@ export default function AdminDashboardPage() {
           setCustomAnswers([])
           setVoteCounts({})
           setTotalVotes(0)
+          window.location.reload()
         } else {
           toast({
             title: "Error",
@@ -457,6 +492,15 @@ export default function AdminDashboardPage() {
                     disabled={isActionInProgress}
                   >
                     {isActionInProgress ? "Processing..." : "Reset Votes"}
+                  </Button>
+
+                  <Button
+                    onClick={handleResetPlayers}
+                    variant="outline"
+                    className="border-blue-500 text-blue-500 hover:bg-blue-500/10"
+                    disabled={isActionInProgress}
+                  >
+                    {isActionInProgress ? "Processing..." : "Reset Players"}
                   </Button>
 
                   <Button onClick={handleResetGame} variant="destructive" disabled={isActionInProgress}>

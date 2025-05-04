@@ -60,7 +60,7 @@ export async function GET() {
         // Get the question details
         const { data: question, error: questionError } = await supabaseAdmin
           .from("questions")
-          .select("id, question, image_url, correct_answer")
+          .select("id, question, image_url, correct_answer, no_correct_answer")
           .eq("id", a.question_id)
           .single()
 
@@ -91,9 +91,10 @@ export async function GET() {
           questionId: question.id,
           question: question.question,
           imageUrl: imageUrl,
-          correctAnswer: question.correct_answer || "No correct answer",
+          correctAnswer: question.no_correct_answer ? null : (question.correct_answer || "No correct answer"),
           yourAnswer: answerOption.text,
           isCorrect: a.is_correct,
+          isOpinionQuestion: question.no_correct_answer || false,
         }
       }),
     )
