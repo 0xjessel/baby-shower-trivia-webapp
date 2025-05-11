@@ -113,11 +113,9 @@ export async function GET() {
 
     while (retries > 0 && !question) {
       try {
-        // Try to get the question with all fields we need
-        // If is_opinion_question doesn't exist, Supabase will just ignore it
         const response = await supabaseAdmin
           .from("questions")
-          .select("id, type, question, image_url, options, allows_custom_answers, no_correct_answer")
+          .select("id, type, question, image_url, options, allows_custom_answers")
           .eq("id", activeGame.current_question_id)
           .single()
 
@@ -193,15 +191,11 @@ export async function GET() {
       .map((option) => ({
         id: option.id,
         text: option.text,
-        addedBy: option.added_by_name || "Anonymous",
+        addedBy: option.added_by_name,
       }))
 
     // Get all options (predefined + custom)
     const allOptions = answerOptions.map((option) => option.text)
-
-    // For now, use no_correct_answer as a proxy for isOpinionQuestion
-    // This will work until we add the actual column
-    const isOpinionQuestion = question.no_correct_answer || false
 
     // Prepare response data
     const responseData = {
@@ -212,7 +206,6 @@ export async function GET() {
         imageUrl: question.image_url ? await getSignedUrl(question.image_url) : undefined,
         options: allOptions,
         allowsCustomAnswers: question.allows_custom_answers,
-        isOpinionQuestion: isOpinionQuestion,
       },
       customAnswers,
     }

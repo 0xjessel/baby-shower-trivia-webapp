@@ -5,7 +5,6 @@ import PusherClient from "pusher-js"
 // Event names
 export const EVENTS = {
   QUESTION_UPDATE: "question-update",
-  NEW_QUESTION: "new-question", // Add this line
   SHOW_RESULTS: "show-results",
   GAME_RESET: "game-reset",
   VOTE_UPDATE: "vote-update",

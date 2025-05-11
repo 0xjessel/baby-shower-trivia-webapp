@@ -16,10 +16,9 @@ interface ResultItem {
   questionId: string
   question: string
   imageUrl?: string
-  correctAnswer: string | null
+  correctAnswer: string
   yourAnswer: string
   isCorrect: boolean
-  isOpinionQuestion?: boolean
 }
 
 interface Winner {
@@ -41,11 +40,6 @@ export default function ResultsPage() {
   const { gameChannel, isLoading: isPusherLoading } = usePusher()
   const [confettiLoaded, setConfettiLoaded] = useState(false)
   const [imageLoaded, setImageLoaded] = useState(false)
-
-  const getResultImage = () => {
-    const scorePercentage = score.total > 0 ? (score.correct / score.total) * 100 : 0
-    return scorePercentage > 50 ? "/images/victory-screen.png" : "/images/defeat-screen.png"
-  }
 
   useEffect(() => {
     // Ensure this code only runs in the browser
@@ -269,22 +263,20 @@ export default function ResultsPage() {
       <PlayerHeartbeat />
 
       <div className="mx-auto max-w-md">
-        {/* Victory or defeat image with animations */}
+        {/* Victory image with animations */}
         <div className="mb-6 flex justify-center">
           <img
-            src={getResultImage() || "/placeholder.svg"}
-            alt={score.correct / score.total > 0.5 ? "Victory!" : "Defeat!"}
-            className={`w-full max-w-[350px] h-auto rounded-lg ${
-              score.correct / score.total > 0.5 ? "animate-bounce-slow" : "animate-pulse"
-            } ${imageLoaded ? "opacity-100" : "opacity-0"} transition-opacity duration-1000`}
+            src="/images/victory-screen.png"
+            alt="Victory!"
+            className={`w-full max-w-[350px] h-auto rounded-lg animate-bounce-slow ${
+              imageLoaded ? "opacity-100" : "opacity-0"
+            } transition-opacity duration-1000`}
             onLoad={() => setImageLoaded(true)}
           />
         </div>
 
         <div className="mb-6 text-center">
-          <h1 className="text-3xl font-bold text-arcane-blue">
-            {score.correct / score.total > 0.5 ? "Your Results" : "Better Luck Next Time"}
-          </h1>
+          <h1 className="text-3xl font-bold text-arcane-blue">Your Results</h1>
           <p className="mt-2 text-lg text-arcane-gray">
             You got {score.correct} out of {score.total} correct!
           </p>
@@ -318,13 +310,10 @@ export default function ResultsPage() {
                 )}
 
                 <div className="mt-2 space-y-1 text-sm">
-                  {/* Only show correct answer if not an opinion question */}
-                  {result.isOpinionQuestion ? null : (
-                    <p>
-                      <span className="font-medium text-arcane-gray">Correct answer:</span>{" "}
-                      <span className="text-green-500">{result.correctAnswer}</span>
-                    </p>
-                  )}
+                  <p>
+                    <span className="font-medium text-arcane-gray">Correct answer:</span>{" "}
+                    <span className="text-green-500">{result.correctAnswer}</span>
+                  </p>
                   <p>
                     <span className="font-medium text-arcane-gray">Your answer:</span>{" "}
                     <span className={result.isCorrect ? "text-green-500" : "text-red-500"}>{result.yourAnswer}</span>

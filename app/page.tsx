@@ -1,10 +1,9 @@
 import Link from "next/link"
-import type { FC } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import QRCode from "@/components/qr-code"
 
-const HomePage: FC = () => {
+export default function HomePage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-arcane-navy p-4">
       <div className="w-full max-w-2xl space-y-8">
@@ -38,10 +37,10 @@ const HomePage: FC = () => {
         </Card>
 
         <div className="flex justify-center space-x-4">
-          <Link href="/join" passHref legacyBehavior>
+          <Link href="/join" passHref>
             <Button className="bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold">Join as Guest</Button>
           </Link>
-          <Link href="/admin" passHref legacyBehavior>
+          <Link href="/admin" passHref>
             <Button
               variant="outline"
               className="border-arcane-gold text-arcane-gold hover:bg-arcane-gold/10 font-medium"
@@ -54,5 +53,3 @@ const HomePage: FC = () => {
     </div>
   )
 }
-
-export default HomePage

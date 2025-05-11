@@ -2,13 +2,13 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { PlusCircle, X, Trash2, Upload } from "lucide-react"
+import { PlusCircle, X, Trash2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -19,23 +19,17 @@ interface QuestionFormProps {
 
 export default function QuestionForm({ onSubmit }: QuestionFormProps) {
   const [questionType, setQuestionType] = useState<"baby-picture" | "text">("baby-picture")
-  const [questionText, setQuestionText] = useState("")
   const [options, setOptions] = useState<string[]>(["", "", "", ""])
-  const [correctAnswer, setCorrectAnswer] = useState<string | null>(null)
+  const [correctAnswer, setCorrectAnswer] = useState<number>(0)
   const [hasNoCorrectAnswer, setHasNoCorrectAnswer] = useState(false)
-  const [noCorrectAnswer, setNoCorrectAnswer] = useState(false)
   const [allowsCustomAnswers, setAllowsCustomAnswers] = useState(true)
-  const [isOpinionQuestion, setIsOpinionQuestion] = useState(false)
   const [noPrefilledOptions, setNoPrefilledOptions] = useState(false)
-  const [imageFile, setImageFile] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
   const [games, setGames] = useState<any[]>([])
   const [activeGameId, setActiveGameId] = useState<string>("")
   const [debugInfo, setDebugInfo] = useState<string[]>([])
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Add a function to log debug information
   const addDebugLog = (message: string) => {
@@ -82,15 +76,6 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
     }
   }, [allowsCustomAnswers, noPrefilledOptions])
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setImageFile(file)
-      const url = URL.createObjectURL(file)
-      setPreviewUrl(url)
-    }
-  }
-
   const handleOptionChange = (index: number, value: string) => {
     const newOptions = [...options]
     newOptions[index] = value
@@ -110,7 +95,7 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
     addDebugLog(`Removed option at index ${index}`)
 
     if (correctAnswer >= newOptions.length) {
-      setCorrectAnswer(null)
+      setCorrectAnswer(0)
       addDebugLog("Reset correct answer to index 0")
     } else if (correctAnswer > index) {
       setCorrectAnswer(correctAnswer - 1)
@@ -120,7 +105,7 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
 
   const clearAllOptions = () => {
     setOptions([])
-    setCorrectAnswer(null)
+    setCorrectAnswer(0)
     addDebugLog("Cleared all options")
   }
 
@@ -205,7 +190,8 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
       addDebugLog("Added no_correct_answer: true")
     } else {
       formData.append("correctAnswerIndex", correctAnswer.toString())
-      addDebugLog(`Correct answer text:: "${options[correctAnswer]}"`)
+      addDebugLog(`Added correctAnswerIndex: ${correctAnswer}`)
+      addDebugLog(`Correct answer text: "${options[correctAnswer]}"`)
     }
 
     try {
@@ -218,16 +204,11 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
         setSuccess(true)
         form.reset()
         setOptions(["", "", "", ""])
-        setCorrectAnswer(null)
+        setCorrectAnswer(0)
         setHasNoCorrectAnswer(false)
         setNoPrefilledOptions(false)
         setQuestionType("baby-picture")
         setAllowsCustomAnswers(true)
-        setImageFile(null)
-        setPreviewUrl(null)
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ""
-        }
       } else {
         const errorMsg = result.error || "Failed to add question"
         setError(errorMsg)
@@ -241,27 +222,6 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
     } finally {
       setIsSubmitting(false)
       addDebugLog("Form submission completed")
-    }
-  }
-
-  // When "No Correct Answer" is toggled, update the opinion question state
-  const handleNoCorrectAnswerChange = (checked: boolean) => {
-    setNoCorrectAnswer(checked)
-    if (checked) {
-      // If there's no correct answer, it might be an opinion question
-      // But we don't automatically set it - let the admin decide
-    } else {
-      // If there is a correct answer, it can't be an opinion question
-      setIsOpinionQuestion(false)
-    }
-  }
-
-  // When "Opinion Question" is toggled, update the no correct answer state
-  const handleOpinionQuestionChange = (checked: boolean) => {
-    setIsOpinionQuestion(checked)
-    if (checked) {
-      // If it's an opinion question, there's no correct answer
-      setNoCorrectAnswer(true)
     }
   }
 
@@ -330,8 +290,6 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
             placeholder="Who is this baby?"
             className="mt-1 border-arcane-blue/30 bg-arcane-navy/50 text-arcane-gray-light focus:border-arcane-blue focus:ring-arcane-blue"
             required
-            value={questionText}
-            onChange={(e) => setQuestionText(e.target.value)}
           />
         </div>
 
@@ -355,18 +313,7 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
                   addDebugLog("No image selected")
                 }
               }}
-              ref={fileInputRef}
-              onChange={handleImageChange}
             />
-            {previewUrl && (
-              <div className="mt-2">
-                <img
-                  src={previewUrl || "/placeholder.svg"}
-                  alt="Preview"
-                  className="h-40 w-auto object-contain rounded-md border border-arcane-blue/30"
-                />
-              </div>
-            )}
             <p className="mt-1 text-xs text-arcane-gray">Supported formats: JPG, PNG, GIF.</p>
           </div>
         )}
@@ -469,9 +416,9 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
               {/* Only show radio buttons if there is a correct answer */}
               {!hasNoCorrectAnswer ? (
                 <RadioGroup
-                  value={correctAnswer?.toString()}
+                  value={correctAnswer.toString()}
                   onValueChange={(value) => {
-                    setCorrectAnswer(value)
+                    setCorrectAnswer(Number.parseInt(value))
                     addDebugLog(`Correct answer changed to index: ${value}`)
                   }}
                   name="correctAnswer"
@@ -545,44 +492,6 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
             <p className="text-center">All answer options will be submitted by guests during the game.</p>
           </div>
         )}
-
-        <div className="flex flex-col space-y-4">
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="no-correct-answer"
-              checked={noCorrectAnswer}
-              onCheckedChange={handleNoCorrectAnswerChange}
-              className="text-arcane-blue"
-            />
-            <Label htmlFor="no-correct-answer" className="text-arcane-gray-light">
-              No correct answer
-            </Label>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="opinion-question"
-              checked={isOpinionQuestion}
-              onCheckedChange={handleOpinionQuestionChange}
-              className="text-arcane-blue"
-            />
-            <Label htmlFor="opinion-question" className="text-arcane-gray-light">
-              Opinion question (no timer)
-            </Label>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="allows-custom-answers"
-              checked={allowsCustomAnswers}
-              onCheckedChange={setAllowsCustomAnswers}
-              className="text-arcane-blue"
-            />
-            <Label htmlFor="allows-custom-answers" className="text-arcane-gray-light">
-              Allow custom answers
-            </Label>
-          </div>
-        </div>
       </div>
 
       {error && (
@@ -614,17 +523,7 @@ export default function QuestionForm({ onSubmit }: QuestionFormProps) {
         className="w-full bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold"
         disabled={isSubmitting}
       >
-        {isSubmitting ? (
-          <div className="flex items-center">
-            <div className="animate-spin mr-2 h-4 w-4 border-2 border-arcane-navy border-t-transparent rounded-full"></div>
-            Uploading...
-          </div>
-        ) : (
-          <div className="flex items-center">
-            <Upload className="h-4 w-4 mr-2" />
-            Upload Question
-          </div>
-        )}
+        {isSubmitting ? "Adding Question..." : "Add Question"}
       </Button>
     </form>
   )

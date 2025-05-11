@@ -1,11 +1,3 @@
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '5mb',
-    },
-  },
-};
-
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { supabaseAdmin } from "@/lib/supabase"
@@ -85,9 +77,9 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       fileName,
-      path: uploadData?.path || "",
-      signedUrl: urlData?.signedUrl || "",
-      signedUrlError: urlError ? urlError.message : "",
+      path: uploadData?.path,
+      signedUrl: urlData?.signedUrl || null,
+      signedUrlError: urlError ? urlError.message : null,
     })
   } catch (error) {
     console.error("[DEBUG-UPLOAD] Unexpected error:", error)
