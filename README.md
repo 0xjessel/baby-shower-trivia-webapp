@@ -4,33 +4,20 @@ A real-time interactive trivia game platform designed for mobile devices, perfec
 
 ## Screenshots
 
-<div align="center">
-  <img src="/public/images/homepage.png" alt="Homepage with QR code" width="300"/>
-  <p><em>Homepage with QR code for easy joining</em></p>
-</div>
+![Homepage with QR code](/public/images/homepage.png)
+*Homepage with QR code for easy joining*
 
-<div align="center">
-  <img src="/public/images/question-trivia.png" alt="Player view of trivia question" width="300"/>
-  <p><em>Player view of an active trivia question</em></p>
-</div>
+![Player view of trivia question](/public/images/question-trivia.png)
+*Player view of an active trivia question*
 
-<div align="center">
-  <img src="/public/images/image-question-custom-answer.png" alt="Image question with custom answers" width="300"/>
-  <p><em>Questions can include images and players can submit custom answers</em></p>
-</div>
+![Questions can include images and players can submit custom answers](/public/images/image-question-custom-answer.png)
+*Questions can include images and players can submit custom answers*
 
-<div align="center">
-  <img src="/public/images/results-page.png" alt="Results page with leaderboard" width="300"/>
-  <p><em>Results page showing victory screen, player ranking, and leaderboard</em></p>
-</div>
+![Results page showing victory screen, player ranking, and leaderboard](/public/images/results-page.png)
+*Results page showing victory screen, player ranking, and leaderboard*
 
-<details>
-  <summary><strong>Admin Dashboard (Click to expand)</strong></summary>
-  <div align="center">
-    <img src="/public/images/admin-dashboard.png" alt="Admin dashboard" width="500"/>
-    <p><em>Admin dashboard for managing questions and game flow</em></p>
-  </div>
-</details>
+![Admin dashboard for managing questions and game flow](/public/images/admin-dashboard.png)
+*Admin dashboard for managing questions and game flow*
 
 ## Features
 
