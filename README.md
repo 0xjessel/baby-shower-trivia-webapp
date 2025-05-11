@@ -32,19 +32,19 @@ Pull requests are welcome! For major changes, please open an issue first to disc
 ## License
 [MIT](LICENSE)
 
-![Homepage with QR code](public/images/homepage.PNG)
+![Homepage with QR code](public/images/homepage.png)
 *Homepage with QR code for easy joining*
 
-![Player view of trivia question](public/images/question-trivia.PNG)
+![Player view of trivia question](public/images/question-trivia.png)
 *Player view of an active trivia question*
 
-![Questions can include images](public/images/image-question.PNG)
+![Questions can include images](public/images/image-question.png)
 *Questions can include images and players can submit custom answers*
 
-![Results page showing victory screen, player ranking, and leaderboard](public/images/results-page.PNG)
+![Results page showing victory screen, player ranking, and leaderboard](public/images/results-page.png)
 *Results page showing victory screen, player ranking, and leaderboard*
 
-![Admin dashboard for managing questions and game flow](public/images/admin-dashboard.PNG)
+![Admin dashboard for managing questions and game flow](public/images/admin-dashboard.png)
 *Admin dashboard for managing questions and game flow*
 
 ## Features
