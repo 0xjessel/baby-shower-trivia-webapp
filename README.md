@@ -2,21 +2,49 @@
 
 A real-time interactive trivia game platform designed for mobile devices, perfect for events, parties, and gatherings. Players can join via QR code, answer questions, submit custom answers, and compete for the highest score.
 
-## Screenshots
+## Features
+- Interactive trivia questions
+- Score tracking
+- Responsive design for mobile and desktop
+- Easy setup and customization
 
-![Homepage with QR code](/public/images/homepage.png)
+## Getting Started
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   ```
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+3. **Run the app locally**
+   ```bash
+   npm start
+   ```
+
+## Folder Structure
+- `src/` - Main application source code
+- `public/` - Static files
+
+## Contributing
+Pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change.
+
+## License
+[MIT](LICENSE)
+
+![Homepage with QR code](public/images/homepage.PNG)
 *Homepage with QR code for easy joining*
 
-![Player view of trivia question](/public/images/question-trivia.png)
+![Player view of trivia question](public/images/question-trivia.PNG)
 *Player view of an active trivia question*
 
-![Questions can include images and players can submit custom answers](/public/images/image-question-custom-answer.png)
+![Questions can include images](public/images/image-question.PNG)
 *Questions can include images and players can submit custom answers*
 
-![Results page showing victory screen, player ranking, and leaderboard](/public/images/results-page.png)
+![Results page showing victory screen, player ranking, and leaderboard](public/images/results-page.PNG)
 *Results page showing victory screen, player ranking, and leaderboard*
 
-![Admin dashboard for managing questions and game flow](/public/images/admin-dashboard.png)
+![Admin dashboard for managing questions and game flow](public/images/admin-dashboard.PNG)
 *Admin dashboard for managing questions and game flow*
 
 ## Features
