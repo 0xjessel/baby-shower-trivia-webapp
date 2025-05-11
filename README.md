@@ -15,7 +15,7 @@ A real-time interactive trivia game platform designed for mobile devices, perfec
       <sub>Trivia question</sub>
     </td>
     <td align="center">
-      <img src="public/images/image-question.png" alt="Questions can include images" width="200"/><br/>
+      <img src="public/images/image-question.PNG" alt="Questions can include images" width="200"/><br/>
       <sub>Image question</sub>
     </td>
   </tr>
