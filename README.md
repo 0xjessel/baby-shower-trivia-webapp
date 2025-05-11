@@ -7,25 +7,25 @@ A real-time interactive trivia game platform designed for mobile devices, perfec
 <table>
   <tr>
     <td align="center">
-      <img src="public/images/homepage.png" alt="Homepage with QR code" width="200"/><br/>
+      <img src="public/images/homepage.png" alt="Homepage with QR code" width="320"/><br/>
       <sub>Homepage with QR code</sub>
     </td>
     <td align="center">
-      <img src="public/images/question-trivia.png" alt="Player view of trivia question" width="200"/><br/>
+      <img src="public/images/question-trivia.png" alt="Player view of trivia question" width="320"/><br/>
       <sub>Trivia question</sub>
     </td>
     <td align="center">
-      <img src="public/images/image-question.PNG" alt="Questions can include images" width="200"/><br/>
+      <img src="public/images/image-question.PNG" alt="Questions can include images" width="320"/><br/>
       <sub>Image question</sub>
     </td>
   </tr>
   <tr>
     <td align="center">
-      <img src="public/images/results-page.png" alt="Results page showing victory screen, player ranking, and leaderboard" width="200"/><br/>
+      <img src="public/images/results-page.png" alt="Results page showing victory screen, player ranking, and leaderboard" width="320"/><br/>
       <sub>Results & Leaderboard</sub>
     </td>
     <td align="center">
-      <img src="public/images/admin-dashboard.png" alt="Admin dashboard for managing questions and game flow" width="200"/><br/>
+      <img src="public/images/admin-dashboard.png" alt="Admin dashboard for managing questions and game flow" width="320"/><br/>
       <sub>Admin Dashboard</sub>
     </td>
     <td></td>
