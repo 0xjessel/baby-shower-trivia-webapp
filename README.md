@@ -38,7 +38,7 @@ Pull requests are welcome! For major changes, please open an issue first to disc
 ![Player view of trivia question](public/images/question-trivia.png)
 *Player view of an active trivia question*
 
-![Questions can include images](public/images/image-question.png)
+![Questions can include images](public/images/image-question.PNG)
 *Questions can include images and players can submit custom answers*
 
 ![Results page showing victory screen, player ranking, and leaderboard](public/images/results-page.png)
