@@ -69,6 +69,7 @@ export async function GET() {
           options: q.options,
           correctAnswer: q.correct_answer,
           allowsCustomAnswers: q.allows_custom_answers,
+          noCorrectAnswer: q.no_correct_answer,
           gameId: q.game_id,
         }
       }),

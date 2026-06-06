@@ -16,6 +16,7 @@ interface Question {
   options: string[]
   correctAnswer: string
   allowsCustomAnswers?: boolean
+  noCorrectAnswer?: boolean
 }
 
 interface CustomAnswer {
@@ -507,6 +508,7 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
                     const totalVotesForQuestion = totalVotes[question.id] || 0
                     const percentage =
                       totalVotesForQuestion > 0 ? Math.round((voteCount / totalVotesForQuestion) * 100) : 0
+                    const isCorrect = !question.noCorrectAnswer && option === question.correctAnswer
 
                     return (
                       <div
@@ -515,15 +517,15 @@ export default function QuestionList({ currentQuestionId }: QuestionListProps) {
                       >
                         {/* Background progress bar */}
                         <div
-                          className={`absolute inset-0 ${option === question.correctAnswer ? "bg-green-500/10" : "bg-arcane-blue/10"}`}
+                          className={`absolute inset-0 ${isCorrect ? "bg-green-500/10" : "bg-arcane-blue/10"}`}
                           style={{ width: `${percentage}%` }}
                         />
                         <div className="relative flex items-center justify-between z-10">
                           <div className="flex-1">
                             <span
-                              className={`${option === question.correctAnswer ? "text-green-500 font-medium" : "text-arcane-gray-light"}`}
+                              className={`${isCorrect ? "text-green-500 font-medium" : "text-arcane-gray-light"}`}
                             >
-                              {option} {option === question.correctAnswer && "(Correct)"}
+                              {option} {isCorrect && "(Correct)"}
                             </span>
                           </div>
                           <div className="flex items-center text-xs text-arcane-gold">
