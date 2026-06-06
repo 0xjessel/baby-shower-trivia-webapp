@@ -15,7 +15,7 @@ export default function HomePage() {
               className="w-full h-auto"
             />
           </div>
-          <p className="mt-2 text-lg text-arcane-gray">Where Piltover Smarts Meet Baby Shower Fun.</p>
+          <p className="mt-2 text-lg text-arcane-gray">Where Piltover Smarts Meet 1st Birthday Fun.</p>
         </div>
 
         <Card className="border-2 border-arcane-blue bg-arcane-navy/80 shadow-md">
