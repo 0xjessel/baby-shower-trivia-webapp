@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { nextQuestion, previousQuestion, showResults, resetGame, resetVotes, uploadQuestion } from "@/app/actions"
+import { startGame, nextQuestion, previousQuestion, showResults, resetGame, resetVotes, uploadQuestion } from "@/app/actions"
 import { toast } from "@/hooks/use-toast"
 import QuestionForm from "@/components/question-form"
 import QuestionList from "@/components/question-list"
 import GameStats from "@/components/game-stats"
 import GameManager from "@/components/game-manager" // Import the new component
-import { Clock, ChevronLeft, ChevronRight, Trophy, Users } from "lucide-react"
+import { Clock, ChevronLeft, ChevronRight, Trophy, Users, PlayCircle } from "lucide-react"
 
 export default function AdminDashboardPage() {
   const [isAdmin, setIsAdmin] = useState(false)
@@ -133,6 +133,39 @@ export default function AdminDashboardPage() {
       setIsLastQuestion(currentIndex === questions.length - 1)
     }
   }, [questions, currentQuestionId])
+
+  const handleStartGame = async () => {
+    if (isActionInProgress) return
+
+    setIsActionInProgress(true)
+    try {
+      const result = await startGame()
+      if (result.success) {
+        toast({
+          title: "Game started!",
+          description: "The first question is now live. Players have 30 seconds to answer.",
+        })
+        // Refresh game state and questions
+        await fetchGameState()
+        await fetchQuestions()
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to start game",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Failed to start game:", error)
+      toast({
+        title: "Error",
+        description: "Failed to start game. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsActionInProgress(false)
+    }
+  }
 
   const handleNextQuestion = async () => {
     if (isActionInProgress) return
@@ -328,6 +361,23 @@ export default function AdminDashboardPage() {
               <CardTitle className="text-xl text-arcane-blue">Game Controls</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-3">
+              {!currentQuestionId && (
+                <Button
+                  onClick={handleStartGame}
+                  className="bg-green-600 hover:bg-green-700 text-white font-bold flex items-center gap-2"
+                  disabled={isActionInProgress}
+                >
+                  {isActionInProgress ? (
+                    "Starting..."
+                  ) : (
+                    <>
+                      <PlayCircle className="h-4 w-4" />
+                      <span>Start Game</span>
+                    </>
+                  )}
+                </Button>
+              )}
+
               <Button
                 onClick={handlePreviousQuestion}
                 className="bg-arcane-blue hover:bg-arcane-blue/80 text-arcane-navy font-bold flex items-center gap-2"

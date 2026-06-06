@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { submitAnswer, addCustomAnswer } from "@/app/actions"
+import { submitAnswer, addCustomAnswer, joinGame } from "@/app/actions"
 import { usePusher } from "@/hooks/use-pusher"
 import { EVENTS } from "@/lib/pusher-client"
 import CountdownTimer from "@/components/countdown-timer"
@@ -69,8 +69,40 @@ export default function GamePage() {
   // Add a new state variable to track if the user has added a custom answer
   const [hasAddedCustomAnswer, setHasAddedCustomAnswer] = useState(false)
 
+  // Guard so auto-rejoin can't loop
+  const rejoiningRef = useRef(false)
+
+  // Ensure the guest has a valid participant. If their session is invalid (e.g. their
+  // participant was deleted by a game reset, or a stale cookie), silently re-register using
+  // the saved name. Falls back to the join screen if there's no saved name.
+  const ensureParticipant = useCallback(async (): Promise<boolean> => {
+    if (rejoiningRef.current) return false
+    const name = typeof window !== "undefined" ? localStorage.getItem("playerName") : null
+    if (!name) {
+      router.push("/join")
+      return false
+    }
+
+    rejoiningRef.current = true
+    try {
+      console.log("Auto-rejoining as", name)
+      const result = await joinGame(name)
+      if (result?.success) {
+        return true
+      }
+      router.push("/join")
+      return false
+    } catch (err) {
+      console.error("Auto-rejoin failed:", err)
+      router.push("/join")
+      return false
+    } finally {
+      rejoiningRef.current = false
+    }
+  }, [router])
+
   // Fetch current question
-  const fetchCurrentQuestion = useCallback(async () => {
+  const fetchCurrentQuestion = useCallback(async (isRetry = false) => {
     try {
       setIsLoading(true)
       console.log("Fetching current question...")
@@ -82,6 +114,17 @@ export default function GamePage() {
           Expires: "0",
         },
       })
+
+      // Participant session invalid (deleted by reset / stale cookie): auto-rejoin and retry once
+      if (res.status === 401) {
+        if (!isRetry) {
+          const rejoined = await ensureParticipant()
+          if (rejoined) {
+            return fetchCurrentQuestion(true)
+          }
+        }
+        return
+      }
 
       if (!res.ok) {
         throw new Error(`API returned ${res.status}`)
@@ -160,7 +203,7 @@ export default function GamePage() {
     } finally {
       setIsLoading(false)
     }
-  }, [currentQuestion, customAnswers.length])
+  }, [currentQuestion, customAnswers.length, ensureParticipant])
 
   // Fetch vote counts for the current question
   const fetchVoteCounts = useCallback(async (questionId: string) => {
@@ -229,26 +272,39 @@ export default function GamePage() {
     gameChannel.bind(EVENTS.QUESTION_UPDATE, (data: { question: Question; timestamp?: number }) => {
       console.log("Received question update via Pusher:", data.question.id)
 
-      // Instead of just fetching the current question, we need to reset state and fetch the new question
-      setCurrentQuestion(null)
+      const q = data.question
+
+      // Reset per-question state
       setSelectedAnswer("")
       setSubmittedAnswer("")
       setHasSubmitted(false)
-      setIsWaiting(false) // Set to false immediately to show loading state
-      setTimerActive(false)
       setTimeIsUp(false)
-      setVoteCounts({})
-      setTotalVotes(0)
       setCustomAnswers([])
-      setHasAddedCustomAnswer(false) // Reset this state for new questions
-      currentQuestionRef.current = null
+      setHasAddedCustomAnswer(false)
       lastVoteUpdateId.current = null
 
-      // Add a small delay before fetching to ensure the database has updated
-      setTimeout(() => {
-        // Fetch the new question
-        fetchCurrentQuestion()
-      }, 500)
+      // Render the new question immediately from the event payload (no refetch-from-empty trap)
+      setCurrentQuestion(q)
+      currentQuestionRef.current = q.id
+      setIsWaiting(false)
+      setIsLoading(false)
+
+      // Initialize vote counts for the new question's options
+      const initialVoteCounts: VoteCounts = {}
+      ;(q.options || []).forEach((option: string) => {
+        initialVoteCounts[option] = 0
+      })
+      setVoteCounts(initialVoteCounts)
+      setTotalVotes(0)
+
+      // Start the timer for the new question
+      setTimerReset((prev) => prev + 1)
+      setTimerActive(true)
+
+      // Reconcile in the background: live vote counts + this guest's answered-state.
+      // fetchCurrentQuestion will auto-rejoin on a 401 (stale/deleted participant).
+      fetchVoteCounts(q.id)
+      fetchCurrentQuestion()
     })
 
     // Listen for vote updates
@@ -343,6 +399,10 @@ export default function GamePage() {
       setHasAddedCustomAnswer(false) // Reset this state
       currentQuestionRef.current = null
       lastVoteUpdateId.current = null
+
+      // A reset deletes participants — silently re-register so this guest is ready
+      // (with a valid participant) when the host starts the game again.
+      ensureParticipant()
     })
 
     return () => {
@@ -353,7 +413,7 @@ export default function GamePage() {
       gameChannel.unbind(EVENTS.SHOW_RESULTS)
       gameChannel.unbind(EVENTS.GAME_RESET)
     }
-  }, [gameChannel, router, fetchCurrentQuestion, fetchVoteCounts, customAnswers])
+  }, [gameChannel, router, fetchCurrentQuestion, fetchVoteCounts, customAnswers, ensureParticipant])
 
   // Handle answer selection
   const handleAnswerChange = async (value: string) => {

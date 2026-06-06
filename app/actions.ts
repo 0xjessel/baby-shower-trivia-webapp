@@ -1417,6 +1417,78 @@ export async function setActiveQuestion(questionId: string) {
   }
 }
 
+// Start the game: activate the first question of the active game and notify everyone
+export async function startGame() {
+  // Check if admin
+  const adminToken = cookies().get("adminToken")?.value
+  if (!adminToken) {
+    return { success: false, error: "Unauthorized" }
+  }
+
+  try {
+    // Get the active game
+    const { data: activeGame, error: gameError } = await supabaseAdmin
+      .from("games")
+      .select("id")
+      .eq("is_active", true)
+      .single()
+
+    if (gameError || !activeGame) {
+      return { success: false, error: "No active game found" }
+    }
+
+    // Get the first question (by created_at) for this game
+    const { data: questions, error: questionsError } = await supabaseAdmin
+      .from("questions")
+      .select("id, type, question, image_url, options, allows_custom_answers")
+      .eq("game_id", activeGame.id)
+      .order("created_at", { ascending: true })
+      .limit(1)
+
+    if (questionsError) throw questionsError
+    if (!questions || questions.length === 0) {
+      return { success: false, error: "This game has no questions to start" }
+    }
+
+    const firstQuestion = questions[0]
+
+    // Activate the game on the first question
+    const { error: updateError } = await supabaseAdmin
+      .from("games")
+      .update({ current_question_id: firstQuestion.id, status: "active" })
+      .eq("id", activeGame.id)
+
+    if (updateError) throw updateError
+
+    // Pre-populate the answer_options table from the question's predefined options
+    await populateAnswerOptions(firstQuestion.id, firstQuestion.options)
+
+    // Notify all clients that the first question is live
+    try {
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.QUESTION_UPDATE, {
+        question: {
+          id: firstQuestion.id,
+          type: firstQuestion.type,
+          question: firstQuestion.question,
+          imageUrl: firstQuestion.image_url,
+          options: firstQuestion.options,
+          allowsCustomAnswers: firstQuestion.allows_custom_answers,
+        },
+        timestamp: Date.now(),
+      })
+    } catch (pusherError) {
+      console.error("Error triggering Pusher event:", pusherError)
+      // Continue even if Pusher fails
+    }
+
+    revalidatePath("/admin/dashboard")
+    return { success: true }
+  } catch (error) {
+    console.error("Error starting game:", error)
+    return { success: false, error: "Failed to start game" }
+  }
+}
+
 // Add these new server actions to the existing actions.ts file
 
 // Create a new game
