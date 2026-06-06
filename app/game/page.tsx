@@ -51,6 +51,9 @@ export default function GamePage() {
   const [timeIsUp, setTimeIsUp] = useState(false)
   const [voteCounts, setVoteCounts] = useState<VoteCounts>({})
   const [totalVotes, setTotalVotes] = useState(0)
+  // Whether guests see the live vote visualization (progress bars + counts). Off by default;
+  // set from the server per active game and via SETTINGS_UPDATE events.
+  const [showLiveVotes, setShowLiveVotes] = useState(false)
   const [customAnswers, setCustomAnswers] = useState<CustomAnswer[]>([])
   const [newCustomAnswer, setNewCustomAnswer] = useState("")
   const [isSubmittingCustom, setIsSubmittingCustom] = useState(false)
@@ -132,6 +135,10 @@ export default function GamePage() {
 
       const data = await res.json()
       console.log("Current question API response:", data) // Add this debug line
+
+      if (typeof data.showLiveVotes === "boolean") {
+        setShowLiveVotes(data.showLiveVotes)
+      }
 
       if (data.waiting) {
         console.log("Waiting for game to start, status:", data.gameStatus)
@@ -377,6 +384,14 @@ export default function GamePage() {
       },
     )
 
+    // Listen for live-votes setting changes
+    gameChannel.bind(EVENTS.SETTINGS_UPDATE, (data: { showLiveVotes?: boolean }) => {
+      console.log("Received SETTINGS_UPDATE event:", data)
+      if (typeof data.showLiveVotes === "boolean") {
+        setShowLiveVotes(data.showLiveVotes)
+      }
+    })
+
     // Listen for results announcement
     gameChannel.bind(EVENTS.SHOW_RESULTS, () => {
       console.log("Received SHOW_RESULTS event")
@@ -410,6 +425,7 @@ export default function GamePage() {
       gameChannel.unbind(EVENTS.QUESTION_UPDATE)
       gameChannel.unbind(EVENTS.VOTE_UPDATE)
       gameChannel.unbind(EVENTS.CUSTOM_ANSWER_ADDED)
+      gameChannel.unbind(EVENTS.SETTINGS_UPDATE)
       gameChannel.unbind(EVENTS.SHOW_RESULTS)
       gameChannel.unbind(EVENTS.GAME_RESET)
     }
@@ -676,8 +692,10 @@ export default function GamePage() {
                       } ${timeIsUp ? "opacity-70" : ""} cursor-pointer`}
                       onClick={() => !timeIsUp && !isSubmittingAnswer && handleAnswerChange(option)}
                     >
-                      {/* Background progress bar */}
-                      <div className="absolute inset-0 bg-arcane-gold/10 z-0" style={{ width: `${percentage}%` }} />
+                      {/* Background progress bar (only when live votes are shown to guests) */}
+                      {showLiveVotes && (
+                        <div className="absolute inset-0 bg-arcane-gold/10 z-0" style={{ width: `${percentage}%` }} />
+                      )}
 
                       <RadioGroupItem value={option} id={`option-${index}`} className="text-arcane-blue z-10" />
                       <div className="ml-2 w-full z-10">
@@ -688,11 +706,13 @@ export default function GamePage() {
                         {isCustom && addedBy && <p className="text-xs text-arcane-gold mt-0.5">Added by {addedBy}</p>}
                       </div>
 
-                      {/* Vote count indicator */}
-                      <div className="flex items-center text-xs text-arcane-gold ml-2 z-10">
-                        <Users className="h-3 w-3 mr-1" />
-                        <span>{voteCount}</span>
-                      </div>
+                      {/* Vote count indicator (only when live votes are shown to guests) */}
+                      {showLiveVotes && (
+                        <div className="flex items-center text-xs text-arcane-gold ml-2 z-10">
+                          <Users className="h-3 w-3 mr-1" />
+                          <span>{voteCount}</span>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -729,7 +749,7 @@ export default function GamePage() {
               )}
             </div>
 
-            {totalVotes > 0 && (
+            {showLiveVotes && totalVotes > 0 && (
               <div className="mt-2 text-xs text-arcane-gray flex items-center justify-end">
                 <Users className="h-3 w-3 mr-1" />
                 <span>Total votes: {totalVotes}</span>

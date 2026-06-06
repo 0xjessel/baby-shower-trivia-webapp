@@ -13,7 +13,7 @@ export async function GET() {
     // Get the active game
     const { data: game, error } = await supabaseAdmin
       .from("games")
-      .select("id, name, description, status, current_question_id")
+      .select("id, name, description, status, current_question_id, show_live_votes")
       .eq("is_active", true)
       .maybeSingle()
 

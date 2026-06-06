@@ -1489,6 +1489,51 @@ export async function startGame() {
   }
 }
 
+// Toggle whether guests see the live vote visualization (progress bars + counts) for the active game
+export async function setShowLiveVotes(enabled: boolean) {
+  // Check if admin
+  const adminToken = cookies().get("adminToken")?.value
+  if (!adminToken) {
+    return { success: false, error: "Unauthorized" }
+  }
+
+  try {
+    const { data: activeGame, error: gameError } = await supabaseAdmin
+      .from("games")
+      .select("id")
+      .eq("is_active", true)
+      .single()
+
+    if (gameError || !activeGame) {
+      return { success: false, error: "No active game found" }
+    }
+
+    const { error } = await supabaseAdmin
+      .from("games")
+      .update({ show_live_votes: enabled })
+      .eq("id", activeGame.id)
+
+    if (error) throw error
+
+    // Notify guests so the change applies live
+    try {
+      await pusherServer.trigger(GAME_CHANNEL, EVENTS.SETTINGS_UPDATE, {
+        showLiveVotes: enabled,
+        timestamp: Date.now(),
+      })
+    } catch (pusherError) {
+      console.error("Error triggering Pusher event:", pusherError)
+      // Continue even if Pusher fails
+    }
+
+    revalidatePath("/admin/dashboard")
+    return { success: true }
+  } catch (error) {
+    console.error("Error updating show live votes setting:", error)
+    return { success: false, error: "Failed to update setting" }
+  }
+}
+
 // Add these new server actions to the existing actions.ts file
 
 // Create a new game

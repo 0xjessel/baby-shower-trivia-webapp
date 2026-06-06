@@ -10,6 +10,7 @@ export const EVENTS = {
   VOTE_UPDATE: "vote-update",
   CUSTOM_ANSWER_ADDED: "custom-answer-added",
   GAME_CHANGE: "game-change",
+  SETTINGS_UPDATE: "settings-update",
 }
 
 // Channel names

@@ -32,7 +32,7 @@ export async function GET() {
     // Get current game state first to determine if we need to fetch question details
     const { data: activeGame, error: gameError } = await supabaseAdmin
       .from("games")
-      .select("id, current_question_id, status")
+      .select("id, current_question_id, status, show_live_votes")
       .eq("is_active", true)
       .single()
 
@@ -91,6 +91,7 @@ export async function GET() {
         answered: answer ? true : false,
         selectedAnswer,
         gameStatus: activeGame.status,
+        showLiveVotes: activeGame.show_live_votes !== false,
       })
     }
 
@@ -222,6 +223,7 @@ export async function GET() {
       gameStatus: activeGame.status,
       answered: answer ? true : false,
       selectedAnswer,
+      showLiveVotes: activeGame.show_live_votes !== false,
     })
   } catch (error) {
     console.error("Error in current-question API:", error)

@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { startGame, nextQuestion, previousQuestion, showResults, resetGame, resetVotes, uploadQuestion } from "@/app/actions"
+import { startGame, nextQuestion, previousQuestion, showResults, resetGame, resetVotes, setShowLiveVotes, uploadQuestion } from "@/app/actions"
 import { toast } from "@/hooks/use-toast"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import QuestionForm from "@/components/question-form"
 import QuestionList from "@/components/question-list"
 import GameStats from "@/components/game-stats"
@@ -23,6 +25,7 @@ export default function AdminDashboardPage() {
   const router = useRouter()
   const [activePlayers, setActivePlayers] = useState(0)
   const [activeGameName, setActiveGameName] = useState<string>("Current Game")
+  const [showLiveVotes, setShowLiveVotesState] = useState(false)
 
   useEffect(() => {
     // Check if user is authenticated as admin
@@ -64,6 +67,9 @@ export default function AdminDashboardPage() {
         const data = await response.json()
         if (data.game && data.game.name) {
           setActiveGameName(data.game.name)
+        }
+        if (data.game && typeof data.game.show_live_votes === "boolean") {
+          setShowLiveVotesState(data.game.show_live_votes)
         }
       }
     } catch (error) {
@@ -133,6 +139,37 @@ export default function AdminDashboardPage() {
       setIsLastQuestion(currentIndex === questions.length - 1)
     }
   }, [questions, currentQuestionId])
+
+  const handleToggleLiveVotes = async (enabled: boolean) => {
+    // Optimistic UI
+    setShowLiveVotesState(enabled)
+    try {
+      const result = await setShowLiveVotes(enabled)
+      if (result.success) {
+        toast({
+          title: enabled ? "Live votes shown" : "Live votes hidden",
+          description: enabled
+            ? "Guests will now see vote counts in real time."
+            : "Guests will no longer see how others are voting.",
+        })
+      } else {
+        setShowLiveVotesState(!enabled) // revert
+        toast({
+          title: "Error",
+          description: result.error || "Failed to update setting",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Failed to update live votes setting:", error)
+      setShowLiveVotesState(!enabled) // revert
+      toast({
+        title: "Error",
+        description: "Failed to update setting. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
 
   const handleStartGame = async () => {
     if (isActionInProgress) return
@@ -438,6 +475,21 @@ export default function AdminDashboardPage() {
                 <Button onClick={handleResetGame} variant="destructive" disabled={isActionInProgress}>
                   {isActionInProgress ? "Processing..." : "Reset Games"}
                 </Button>
+              </div>
+
+              <div className="flex w-full items-center gap-2 border-t border-arcane-blue/20 pt-3">
+                <Switch
+                  id="show-live-votes"
+                  checked={showLiveVotes}
+                  onCheckedChange={handleToggleLiveVotes}
+                  className="data-[state=checked]:bg-arcane-blue"
+                />
+                <Label htmlFor="show-live-votes" className="text-arcane-gray-light">
+                  Show live votes to guests
+                </Label>
+                <span className="ml-1 text-xs text-arcane-gray">
+                  (off = guests can&apos;t see how others vote until results)
+                </span>
               </div>
             </CardContent>
           </Card>
